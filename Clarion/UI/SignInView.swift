@@ -45,13 +45,12 @@ struct SignInView: View {
                     Task { await signIn() }
                 } label: {
                     if busy {
-                        ProgressView().frame(maxWidth: .infinity)
+                        ProgressView().tint(.white).frame(maxWidth: .infinity)
                     } else {
                         Text("Sign in").frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(busy || email.isEmpty || password.isEmpty)
 
                 Text("Use the same account as clarionlabs.tech. Your health data syncs privately to your own dashboard — never for advertising.")

@@ -54,7 +54,7 @@ struct HomeView: View {
                         Text("Connect").frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(requestingAuth)
             }
         }
@@ -147,9 +147,11 @@ struct HomeView: View {
                 }
 
                 Button("Sync now") {
+                    Haptics.commit()
                     Task { await sync.sync() }
                 }
                 .buttonStyle(.bordered)
+                .buttonStyle(PressableStyle())
                 .disabled(sync.status == .syncing)
             }
         }

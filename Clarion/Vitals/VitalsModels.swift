@@ -17,6 +17,30 @@ struct WearableSnapshot: Codable {
 
     /// Most recent day carrying any data.
     var latest: WearableDailyMetrics? { daily.last }
+
+    /// The newest date (YYYY-MM-DD) with a REAL reading — used to warn when the device hasn't
+    /// delivered fresh data even though the pipeline is running. A day counts if any core
+    /// recovery/sleep field is present (steps alone don't count; phones generate those).
+    var latestReadingDate: String? {
+        for d in daily.reversed() {
+            if d.hrv != nil || d.restingHeartRate != nil || d.sleepDurationMin != nil || d.readinessScore != nil {
+                return d.date
+            }
+        }
+        return nil
+    }
+
+    /// Days since the latest real reading (0 = today). Nil when no readings at all.
+    var readingAgeDays: Int? {
+        guard let dateStr = latestReadingDate else { return nil }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = .current
+        guard let date = f.date(from: dateStr) else { return nil }
+        return Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: date), to: Calendar.current.startOfDay(for: Date())).day
+    }
+
+    /// True when the newest real reading is old enough that showing it as "current" would
+    /// mislead (>1 full day behind).
+    var isStale: Bool { (readingAgeDays ?? 0) >= 2 }
 }
 
 struct CorrelationInsight: Codable, Identifiable {
@@ -58,5 +82,14 @@ struct VitalsMetric: Identifiable {
         "respiratory_rate": .init(id: "respiratory_rate", title: "Respiratory rate", unit: "br/min", keyPath: \.respiratoryRate, higherIsBetter: false, caption: "Overnight breathing rate"),
         "steps_energy": .init(id: "steps_energy", title: "Activity", unit: "steps", keyPath: \.steps, higherIsBetter: true, caption: "Steps today"),
         "skin_temp": .init(id: "skin_temp", title: "Overnight body temperature", unit: "°C", keyPath: \.skinTempDeviationC, higherIsBetter: false, caption: "Deviation from your baseline"),
+        "sleep_quality": .init(id: "sleep_quality", title: "Sleep", unit: "min", keyPath: \.sleepDurationMin, higherIsBetter: true, caption: "Nightly duration over the window"),
+        "spo2": .init(id: "spo2", title: "Blood oxygen", unit: "%", keyPath: \.spo2Pct, higherIsBetter: true, caption: "Average overnight SpO₂"),
+        "total_energy": .init(id: "total_energy", title: "Energy burn", unit: "kcal", keyPath: \.totalEnergyKcal, higherIsBetter: true, caption: "Total daily energy expenditure"),
+    ]
+
+    /// Display order for the "add more" list in Customize.
+    static let allKeys: [String] = [
+        "readiness", "hrv_trend", "resting_hr", "sleep_quality", "vo2max",
+        "skin_temp", "spo2", "respiratory_rate", "steps_energy", "total_energy",
     ]
 }

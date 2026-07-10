@@ -49,6 +49,7 @@ struct RootView: View {
     }
 
     @State private var tab = 0
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         if auth.isSignedIn || uiTestVitals {
@@ -65,6 +66,16 @@ struct RootView: View {
                     .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
             }
             .tint(Color.forest)
+            .onChange(of: tab) { _, _ in Haptics.selection() }
+            .onChange(of: scenePhase) { _, phase in
+                // Daily-freshness guarantee: whenever the app comes to the foreground and the
+                // last sync is older than 6 hours, sync automatically — no button required.
+                guard phase == .active, auth.isSignedIn else { return }
+                let last = sync.lastSyncedAt ?? .distantPast
+                if Date().timeIntervalSince(last) > 6 * 3600 {
+                    Task { await sync.sync() }
+                }
+            }
             .onAppear {
                 if uiTestVitals {
                     // Optional `TAB=<n>` launch arg picks the starting tab for screenshots.
