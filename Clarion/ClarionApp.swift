@@ -23,6 +23,14 @@ struct ClarionApp: App {
 struct RootView: View {
     @EnvironmentObject private var auth: SupabaseAuth
     @EnvironmentObject private var sync: SyncCoordinator
+    @StateObject private var report: ReportStore
+
+    init() {
+        // ReportStore needs auth; RootView is created inside the auth-provided environment, but
+        // StateObject init can't read @EnvironmentObject, so build it from a fresh SupabaseAuth
+        // that shares the same Keychain-persisted session.
+        _report = StateObject(wrappedValue: ReportStore(auth: SupabaseAuth()))
+    }
 
     /// Cached across launches so permission scoping is right before the network returns;
     /// refreshed from /api/account/persona on every sign-in.
@@ -49,11 +57,21 @@ struct RootView: View {
                     .tabItem { Label("Home", systemImage: "house") }.tag(0)
                 VitalsView(auth: auth)
                     .tabItem { Label("Vitals", systemImage: "waveform.path.ecg") }.tag(1)
+                ReportView(store: report)
+                    .tabItem { Label("Report", systemImage: "drop") }.tag(2)
+                PlanView(store: report)
+                    .tabItem { Label("Plan", systemImage: "pills") }.tag(3)
                 NavigationStack { SettingsView() }
-                    .tabItem { Label("Settings", systemImage: "gearshape") }.tag(2)
+                    .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
             }
             .tint(Color.forest)
-            .onAppear { if uiTestVitals { tab = 1 } }
+            .onAppear {
+                if uiTestVitals {
+                    // Optional `TAB=<n>` launch arg picks the starting tab for screenshots.
+                    let tabArg = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("TAB=") }
+                    tab = tabArg.flatMap { Int($0.dropFirst(4)) } ?? 1
+                }
+            }
             .task {
                 await refreshPersona()
                 // Re-register observers every launch — registrations don't survive relaunch.

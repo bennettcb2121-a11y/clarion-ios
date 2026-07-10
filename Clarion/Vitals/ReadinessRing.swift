@@ -68,4 +68,5 @@ extension Color {
     static let ink = Color(red: 0.09, green: 0.13, blue: 0.11)
     static let inkMuted = Color(red: 0.47, green: 0.51, blue: 0.49)
     static let clay = Color(red: 0.69, green: 0.27, blue: 0.22)
+    static let paper = Color(red: 0.94, green: 0.95, blue: 0.94)
 }

@@ -122,7 +122,3 @@ extension VitalsMetric {
         daily.contains { $0[keyPath: metric.keyPath] != nil }
     }
 }
-
-private extension Color {
-    static let paper = Color(red: 0.94, green: 0.95, blue: 0.94)
-}
