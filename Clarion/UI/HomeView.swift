@@ -31,13 +31,6 @@ struct HomeView: View {
                 .padding(20)
             }
             .navigationTitle("Clarion")
-            .toolbar {
-                NavigationLink {
-                    SettingsView()
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-            }
             .refreshable { await sync.sync() }
         }
     }

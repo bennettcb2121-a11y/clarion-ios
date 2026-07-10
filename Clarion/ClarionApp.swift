@@ -30,16 +30,37 @@ struct RootView: View {
 
     var persona: Persona { Persona(rawValue: personaRaw) ?? .general }
 
+    /// DEBUG-only: launch with `UITEST_VITALS` to render the app shell (Vitals tab first) without
+    /// a live session, so the dashboard can be screenshotted in the simulator (demo fallback).
+    private var uiTestVitals: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("UITEST_VITALS")
+        #else
+        return false
+        #endif
+    }
+
+    @State private var tab = 0
+
     var body: some View {
-        if auth.isSignedIn {
-            HomeView(persona: persona)
-                .task {
-                    await refreshPersona()
-                    // Re-register observers every launch — registrations don't survive relaunch.
-                    HealthStore.shared.registerBackgroundSync(persona: persona) {
-                        Task { await sync.sync() }
-                    }
+        if auth.isSignedIn || uiTestVitals {
+            TabView(selection: $tab) {
+                HomeView(persona: persona)
+                    .tabItem { Label("Home", systemImage: "house") }.tag(0)
+                VitalsView(auth: auth)
+                    .tabItem { Label("Vitals", systemImage: "waveform.path.ecg") }.tag(1)
+                NavigationStack { SettingsView() }
+                    .tabItem { Label("Settings", systemImage: "gearshape") }.tag(2)
+            }
+            .tint(Color.forest)
+            .onAppear { if uiTestVitals { tab = 1 } }
+            .task {
+                await refreshPersona()
+                // Re-register observers every launch — registrations don't survive relaunch.
+                HealthStore.shared.registerBackgroundSync(persona: persona) {
+                    Task { await sync.sync() }
                 }
+            }
         } else {
             SignInView()
         }
