@@ -13,22 +13,25 @@ struct ReadinessRing: View {
 
     var body: some View {
         ZStack {
+            // Full, even track — clearly visible against white so the arc reads as progress
+            // over a complete instrument, not a floating crescent.
             Circle()
-                .stroke(Color.forestWash, lineWidth: 15)
+                .stroke(Color.forest.opacity(0.14), lineWidth: 15)
 
+            // Solid-to-bright LINEAR gradient (an angular gradient wraps and produces a
+            // color seam where the arc cap meets its own start — the old 10-o'clock artifact).
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    AngularGradient(
-                        gradient: Gradient(colors: [Color.forestBright, Color.forest]),
-                        center: .center,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(270)
+                    LinearGradient(
+                        colors: [Color.forest, Color.forestBright],
+                        startPoint: .bottomLeading,
+                        endPoint: .topTrailing
                     ),
                     style: StrokeStyle(lineWidth: 15, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: Color.forest.opacity(0.35), radius: 6, y: 2)
+                .shadow(color: Color.forest.opacity(0.30), radius: 6, y: 2)
 
             VStack(spacing: 4) {
                 Text(score == nil ? "—" : "\(shownValue)")
@@ -67,6 +70,11 @@ extension Color {
     static let forestInk = Color(red: 0.05, green: 0.29, blue: 0.23)
     static let ink = Color(red: 0.09, green: 0.13, blue: 0.11)
     static let inkMuted = Color(red: 0.47, green: 0.51, blue: 0.49)
+    /// Watch/suboptimal — derived warm amber, NOT red. Red (clay) is reserved for
+    /// high/deficient flags and destructive actions only.
+    static let amber = Color(red: 0.60, green: 0.42, blue: 0.18)
+    static let amberWash = Color(red: 0.96, green: 0.93, blue: 0.86)
     static let clay = Color(red: 0.69, green: 0.27, blue: 0.22)
+    static let clayWash = Color(red: 0.96, green: 0.89, blue: 0.88)
     static let paper = Color(red: 0.94, green: 0.95, blue: 0.94)
 }

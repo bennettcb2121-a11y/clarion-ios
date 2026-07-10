@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The app: permission primer (first run), Today card of just-synced persona metrics
-/// (guideline 4.2's "minimum functionality" defense AND the visible use of every requested
-/// HealthKit type), sync status, and the door to the full dashboard on the web.
+/// Home is the daily front door — a readiness-first snapshot of just-synced persona metrics,
+/// sync state, and the door onward. Pre-connect it earns the permission with a persona-scoped
+/// primer above a preview of what's coming (never a blank void).
 struct HomeView: View {
     let persona: Persona
 
@@ -10,28 +10,36 @@ struct HomeView: View {
     @EnvironmentObject private var sync: SyncCoordinator
     @AppStorage("clarion_health_authorized") private var healthAuthorized = false
     @State private var requestingAuth = false
+    @State private var openingDashboard = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 18) {
                     if !HealthStore.isAvailable {
                         card {
                             Text("Health data isn't available on this device.")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.inkMuted)
                         }
                     } else if !healthAuthorized {
-                        connectCard
+                        connectCard.entrance(0)
+                        previewSkeleton.entrance(1)
                     } else {
-                        todayCard
-                        syncCard
+                        todayCard.entrance(0)
+                        syncRow.entrance(1)
                     }
-                    dashboardLink
+                    webFooter.entrance(2)
                 }
                 .padding(20)
             }
+            .contentMargins(.bottom, 96, for: .scrollContent)
+            .background(Color.paper.ignoresSafeArea())
             .navigationTitle("Clarion")
-            .refreshable { await sync.sync() }
+            .refreshable {
+                Haptics.touch()
+                await sync.sync()
+                Haptics.success()
+            }
         }
     }
 
@@ -41,15 +49,16 @@ struct HomeView: View {
         card {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Connect Apple Health")
-                    .font(.headline)
+                    .font(.system(.title3, design: .serif).weight(.bold))
+                    .foregroundStyle(Color.ink)
                 Text(PersonaScopes.primerCopy(for: persona))
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkMuted)
                 Button {
                     Task { await requestHealthAccess() }
                 } label: {
                     if requestingAuth {
-                        ProgressView().frame(maxWidth: .infinity)
+                        ProgressView().tint(.white).frame(maxWidth: .infinity)
                     } else {
                         Text("Connect").frame(maxWidth: .infinity)
                     }
@@ -57,6 +66,36 @@ struct HomeView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(requestingAuth)
             }
+        }
+    }
+
+    /// What's coming once they connect — greyed preview tiles instead of a blank screen.
+    private var previewSkeleton: some View {
+        card {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("WHAT YOU'LL SEE")
+                    .font(.system(size: 12, weight: .semibold)).tracking(1.6)
+                    .foregroundStyle(Color.inkMuted)
+                HStack(spacing: 18) {
+                    previewMetric("Readiness", "82")
+                    previewMetric("HRV", "78 ms")
+                    previewMetric("Sleep", "7h 20m")
+                }
+                Text("Your recovery, sleep, and training — connected to your bloodwork.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.inkMuted)
+            }
+        }
+        .opacity(0.75)
+    }
+
+    private func previewMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(.title3, design: .serif).weight(.bold))
+                .foregroundStyle(Color.inkMuted)
+                .redacted(reason: .placeholder)
+            Text(label).font(.caption).foregroundStyle(Color.inkMuted)
         }
     }
 
@@ -75,41 +114,52 @@ struct HomeView: View {
         requestingAuth = false
     }
 
-    // MARK: - Today
+    // MARK: - Today (the daily snapshot)
 
     private var todayCard: some View {
         card {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Today")
-                    .font(.headline)
+                HStack {
+                    Text("Today")
+                        .font(.system(.title3, design: .serif).weight(.bold))
+                        .foregroundStyle(Color.ink)
+                    Spacer()
+                    if let last = sync.lastSyncedAt {
+                        Text("synced \(last.formatted(.relative(presentation: .named)))")
+                            .font(.caption)
+                            .foregroundStyle(Color.inkMuted)
+                    }
+                }
                 if let today = sync.lastSummary.last {
-                    HStack(spacing: 18) {
-                        metric("HRV", today.hrv.map { "\(Int($0)) ms" })
-                        metric("Resting HR", today.restingHeartRate.map { "\(Int($0)) bpm" })
-                        metric("Sleep", today.sleepDurationMin.map { formatMinutes($0) })
+                    HStack(spacing: 22) {
+                        bigMetric("Readiness", today.readinessScore.map { "\(Int($0))" })
+                        bigMetric("HRV", today.hrv.map { "\(Int($0)) ms" })
+                        bigMetric("Sleep", today.sleepDurationMin.map { formatMinutes($0) })
                     }
                     if persona == .menopause, let temp = today.skinTempDeviationC {
-                        metric("Overnight temp", String(format: "%+.2f °C vs baseline", temp))
+                        bigMetric("Overnight temp", String(format: "%+.2f °C vs baseline", temp))
                     }
                     if persona == .endurance, let vo2 = today.vo2Max {
-                        metric("VO₂max", String(format: "%.1f", vo2))
+                        bigMetric("VO₂max", String(format: "%.1f", vo2))
                     }
                 } else {
-                    Text("Sync to see today's numbers.")
+                    Text("Pull to sync and see today's numbers.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.inkMuted)
                 }
             }
         }
     }
 
-    private func metric(_ label: String, _ value: String?) -> some View {
+    private func bigMetric(_ label: String, _ value: String?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value ?? "—")
-                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .font(.system(size: 24, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Color.ink)
             Text(label)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkMuted)
         }
     }
 
@@ -119,61 +169,54 @@ struct HomeView: View {
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"
     }
 
-    // MARK: - Sync status
+    // MARK: - Sync state (one quiet row, not a card of chrome)
 
-    private var syncCard: some View {
+    private var syncRow: some View {
         card {
-            VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
                 switch sync.status {
                 case .idle:
-                    if let last = sync.lastSyncedAt {
-                        Label("Synced \(last.formatted(.relative(presentation: .named)))", systemImage: "checkmark.circle")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Label("Not synced yet", systemImage: "arrow.triangle.2.circlepath")
-                            .foregroundStyle(.secondary)
-                    }
+                    Image(systemName: sync.lastSyncedAt == nil ? "arrow.triangle.2.circlepath" : "checkmark.circle")
+                        .foregroundStyle(Color.forest)
+                    Text(sync.lastSyncedAt == nil ? "Not synced yet" : "Everything up to date")
+                        .font(.subheadline).foregroundStyle(Color.inkMuted)
                 case .syncing:
-                    Label { Text("Syncing…") } icon: { ProgressView() }
-                case .done(let daily, let workouts, let at):
-                    Label(
-                        "Synced \(daily) days, \(workouts) workouts · \(at.formatted(date: .omitted, time: .shortened))",
-                        systemImage: "checkmark.circle.fill"
-                    )
-                    .foregroundStyle(.green)
+                    ProgressView().controlSize(.small)
+                    Text("Syncing…").font(.subheadline).foregroundStyle(Color.inkMuted)
+                case .done(let daily, let workouts, _):
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.forest)
+                    Text("Synced \(daily) days, \(workouts) workouts")
+                        .font(.subheadline).foregroundStyle(Color.inkMuted)
                 case .failed(let message):
-                    Label(message, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.amber)
+                    Text(message).font(.subheadline).foregroundStyle(Color.inkMuted)
                 }
-
-                Button("Sync now") {
+                Spacer()
+                Button("Sync") {
                     Haptics.commit()
                     Task { await sync.sync() }
                 }
-                .buttonStyle(.bordered)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.forestInk)
                 .buttonStyle(PressableStyle())
                 .disabled(sync.status == .syncing)
             }
         }
     }
 
-    // MARK: - Dashboard door
+    // MARK: - The web, demoted to a quiet footer
 
-    @State private var openingDashboard = false
-
-    private var dashboardLink: some View {
-        // Mints a one-time login link so the dashboard opens SIGNED IN (Safari doesn't share
-        // the app's Supabase session). Falls back to the plain URL if the handoff fails.
+    private var webFooter: some View {
         Button {
             Task { await openDashboard() }
         } label: {
-            Label(openingDashboard ? "Opening…" : "Full analysis on clarionlabs.tech",
-                  systemImage: "arrow.up.forward.app")
-                .frame(maxWidth: .infinity)
+            Text(openingDashboard ? "Opening…" : "Full analysis on clarionlabs.tech ↗")
+                .font(.footnote)
+                .foregroundStyle(Color.inkMuted)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.large)
+        .buttonStyle(PressableStyle())
         .disabled(openingDashboard)
+        .padding(.top, 4)
     }
 
     private func openDashboard() async {
@@ -192,6 +235,6 @@ struct HomeView: View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+            .clarionCard()
     }
 }

@@ -10,40 +10,52 @@ struct MetricCard: View {
     private var series: [Double] { WearableDailyMetrics.series(daily, metric.keyPath) }
     private var latest: Double? { WearableDailyMetrics.latest(daily, metric.keyPath) }
 
+    /// The hero ring already announces today's readiness — this card becomes the TREND view
+    /// (sparkline as hero, no duplicated big number).
+    private var isTrendVariant: Bool { metric.id == "readiness" }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(metric.title)
+                Text(isTrendVariant ? "Readiness trend" : metric.title)
                     .font(.system(.headline, design: .serif))
                     .foregroundStyle(Color.ink)
                 Spacer()
                 if let t = trend { trendChip(t) }
+                Text("\(min(series.count, daily.count))d")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.inkMuted)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Color.paper, in: Capsule())
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(latest.map { format($0) } ?? "—")
-                    .font(.system(size: 30, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.ink)
-                if !metric.unit.isEmpty {
-                    Text(metric.unit).font(.caption).foregroundStyle(Color.inkMuted)
+            if !isTrendVariant {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(latest.map { format($0) } ?? "—")
+                        .font(.system(size: 30, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.ink)
+                    if !metric.unit.isEmpty {
+                        Text(metric.unit).font(.caption).foregroundStyle(Color.inkMuted)
+                    }
                 }
             }
 
             if series.count >= 2 {
                 chart
-                    .frame(height: 64)
+                    .frame(height: isTrendVariant ? 92 : 64)
                 HStack(spacing: 6) {
                     RoundedRectangle(cornerRadius: 2).fill(Color.forestWash).frame(width: 16, height: 8)
                     Text("your usual range").font(.system(size: 11)).foregroundStyle(Color.inkMuted)
                 }
             }
 
-            Text(metric.caption).font(.footnote).foregroundStyle(Color.inkMuted)
+            Text(isTrendVariant ? "How your recovery has moved across the window" : metric.caption)
+                .font(.footnote).foregroundStyle(Color.inkMuted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.black.opacity(0.06)))
+        .clarionCard()
     }
 
     // MARK: - Chart
@@ -65,6 +77,17 @@ struct MetricCard: View {
             )
             .foregroundStyle(Color.forestWash.opacity(0.6))
 
+            // Curve-following gradient fill under the line (not a flat block).
+            ForEach(pts, id: \.offset) { i, v in
+                AreaMark(x: .value("i", i), y: .value("v", v))
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.forest.opacity(0.16), Color.forest.opacity(0.0)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+            }
             ForEach(pts, id: \.offset) { i, v in
                 LineMark(x: .value("i", i), y: .value("v", v))
                     .interpolationMethod(.catmullRom)
@@ -101,7 +124,7 @@ struct MetricCard: View {
         let good = t.rising == metric.higherIsBetter
         return Text("\(t.rising ? "▲" : "▼") \(t.pct)%")
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(good ? Color.forest : Color.clay)
+            .foregroundStyle(good ? Color.forest : Color.amber)
     }
 
     private func format(_ v: Double) -> String {
@@ -126,10 +149,10 @@ struct InsightCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
+        .clarionCard(cornerRadius: 16)
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(insight.severity == "watch" ? Color.clay : Color.forest)
+                .fill(insight.severity == "watch" ? Color.amber : Color.forest)
                 .frame(width: 4)
                 .clipShape(RoundedRectangle(cornerRadius: 2))
         }
@@ -139,22 +162,30 @@ struct InsightCard: View {
 struct WorkoutsCard: View {
     let workouts: [WearableWorkout]
 
-    private let emoji = ["run": "🏃", "ride": "🚴", "swim": "🏊", "strength": "🏋️", "walk": "🚶", "hike": "🥾", "row": "🚣"]
+    private let symbols = [
+        "run": "figure.run", "ride": "figure.outdoor.cycle", "swim": "figure.pool.swim",
+        "strength": "figure.strengthtraining.traditional", "walk": "figure.walk",
+        "hike": "figure.hiking", "row": "figure.rower",
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(workouts.enumerated()), id: \.element.id) { i, w in
                 HStack(spacing: 12) {
-                    Text(emoji[w.type] ?? "💪").font(.title3)
+                    Image(systemName: symbols[w.type] ?? "figure.mixed.cardio")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color.forestInk)
+                        .frame(width: 34, height: 34)
+                        .background(Color.forestWash, in: Circle())
                     VStack(alignment: .leading, spacing: 1) {
                         Text(w.type.capitalized).font(.system(.subheadline, design: .serif)).foregroundStyle(Color.ink)
                         Text(prettyDate(w.date)).font(.caption).foregroundStyle(Color.inkMuted)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
-                        if let km = w.distanceKm { Text(String(format: "%.1f km", km)).font(.system(size: 13, design: .monospaced)) }
+                        if let km = w.distanceKm { Text(String(format: "%.1f km", km)).font(.system(size: 13, weight: .medium)).monospacedDigit() }
                         Text("\(Int(w.durationMin))m · \(w.avgHeartRate.map { "\(Int($0)) bpm" } ?? "—")")
-                            .font(.system(size: 12, design: .monospaced)).foregroundStyle(Color.inkMuted)
+                            .font(.system(size: 12)).monospacedDigit().foregroundStyle(Color.inkMuted)
                     }
                 }
                 .padding(.vertical, 10)
@@ -162,8 +193,7 @@ struct WorkoutsCard: View {
             }
         }
         .padding(.horizontal, 16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.black.opacity(0.06)))
+        .clarionCard(cornerRadius: 16)
     }
 
     private func prettyDate(_ iso: String) -> String {
@@ -174,15 +204,3 @@ struct WorkoutsCard: View {
     }
 }
 
-extension VitalsView {
-    var sampleBanner: some View {
-        HStack {
-            Image(systemName: "sparkles")
-            Text("Sample data — connect a device to see your own.").font(.footnote)
-            Spacer()
-        }
-        .foregroundStyle(Color.forestInk)
-        .padding(12)
-        .background(Color.forestWash, in: RoundedRectangle(cornerRadius: 12))
-    }
-}

@@ -24,6 +24,7 @@ struct VitalsView: View {
                     content(r)
                 }
             }
+            .contentMargins(.bottom, 96, for: .scrollContent)
             .background(Color.paper.ignoresSafeArea())
             .navigationTitle("Vitals")
             .toolbar {
@@ -51,9 +52,7 @@ struct VitalsView: View {
     private func content(_ r: SnapshotResponse) -> some View {
         let snap = r.snapshot
         VStack(spacing: 18) {
-            if snap.isDemo {
-                sampleBanner.entrance(0)
-            } else if snap.isStale {
+            if !snap.isDemo && snap.isStale {
                 staleBanner(snap).entrance(0)
             }
 
@@ -128,6 +127,9 @@ struct VitalsView: View {
                 }
                 if snap.isStale, let date = snap.latestReadingDate {
                     chip("as of \(prettyDay(date))", good: false)
+                }
+                if snap.isDemo {
+                    chip("Sample data", good: false)
                 }
             }
         }

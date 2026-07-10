@@ -19,6 +19,7 @@ struct PlanView: View {
                     content(r)
                 }
             }
+            .contentMargins(.bottom, 96, for: .scrollContent)
             .background(Color.paper.ignoresSafeArea())
             .navigationTitle("Plan")
             .refreshable { await store.load() }
@@ -51,7 +52,7 @@ struct PlanView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text("$\(Int(monthly.rounded()))").font(.system(.title2, design: .monospaced).weight(.semibold)).foregroundStyle(Color.forest)
+                Text("$\(Int(monthly.rounded()))").font(.system(.title2, weight: .semibold)).monospacedDigit().foregroundStyle(Color.forest)
                 Text("/ month").font(.caption).foregroundStyle(Color.inkMuted)
             }
         }
@@ -72,26 +73,30 @@ struct StackRow: View {
     let item: StackItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(item.name).font(.system(.headline, design: .serif)).foregroundStyle(Color.ink)
+        VStack(alignment: .leading, spacing: 7) {
+            Text(item.name)
+                .font(.system(.headline, design: .serif)).foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
                 if let marker = item.marker {
                     Text(marker).font(.system(size: 11, weight: .semibold))
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(Color.forestWash, in: Capsule()).foregroundStyle(Color.forestInk)
                 }
+                if item.monthlyCost > 0 {
+                    Text("~$\(Int(item.monthlyCost.rounded()))/mo")
+                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Color.inkMuted)
+                }
                 Spacer()
-                Text(item.dose).font(.system(.subheadline, design: .monospaced)).foregroundStyle(Color.inkMuted)
+                Text(item.dose)
+                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(Color.ink)
             }
             Text(item.reason).font(.subheadline).foregroundStyle(Color.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            if item.monthlyCost > 0 {
-                Text("~$\(Int(item.monthlyCost.rounded()))/mo").font(.caption).foregroundStyle(Color.inkMuted)
-            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.black.opacity(0.05)))
+        .clarionCard(cornerRadius: 16)
     }
 }

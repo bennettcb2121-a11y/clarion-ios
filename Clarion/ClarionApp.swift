@@ -9,6 +9,27 @@ struct ClarionApp: App {
         let auth = SupabaseAuth()
         _auth = StateObject(wrappedValue: auth)
         _sync = StateObject(wrappedValue: SyncCoordinator(auth: auth))
+        Self.applyBrandChrome()
+    }
+
+    /// Brand the system chrome once: serif (New York) large titles everywhere — the biggest
+    /// glyphs on every screen should be the most Clarion, not stock SF Pro.
+    private static func applyBrandChrome() {
+        let ink = UIColor(red: 0.09, green: 0.13, blue: 0.11, alpha: 1)
+
+        func serif(_ size: CGFloat, weight: UIFont.Weight) -> UIFont {
+            let base = UIFont.systemFont(ofSize: size, weight: weight)
+            guard let desc = base.fontDescriptor.withDesign(.serif) else { return base }
+            return UIFont(descriptor: desc, size: size)
+        }
+
+        let nav = UINavigationBarAppearance()
+        nav.configureWithTransparentBackground()
+        nav.largeTitleTextAttributes = [.font: serif(34, weight: .bold), .foregroundColor: ink]
+        nav.titleTextAttributes = [.font: serif(17, weight: .semibold), .foregroundColor: ink]
+        UINavigationBar.appearance().standardAppearance = nav
+        UINavigationBar.appearance().scrollEdgeAppearance = nav
+        UINavigationBar.appearance().compactAppearance = nav
     }
 
     var body: some Scene {
@@ -65,6 +86,9 @@ struct RootView: View {
                 NavigationStack { SettingsView() }
                     .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
             }
+            // One consistent outline weight for every tab icon — no auto-fill on selection
+            // (the mixed filled/outline set was the most persistent generic element).
+            .environment(\.symbolVariants, .none)
             .tint(Color.forest)
             .onChange(of: tab) { _, _ in Haptics.selection() }
             .onChange(of: scenePhase) { _, phase in

@@ -47,12 +47,12 @@ final class ReportStore: ObservableObject {
         counts: StatusCounts(optimal: 19, low: 1, high: 0, suboptimal: 1),
         lastUpdated: nil,
         results: [
-            BiomarkerResult(name: "Ferritin", value: 34, optimalMin: 50, optimalMax: 150, status: "low", whyItMatters: "Iron stores — low ferritin blunts recovery and endurance."),
-            BiomarkerResult(name: "Vitamin D", value: 28, optimalMin: 30, optimalMax: 50, status: "suboptimal", whyItMatters: "Bone, immune, and mood support."),
-            BiomarkerResult(name: "HDL", value: 62, optimalMin: 40, optimalMax: 90, status: "optimal", whyItMatters: nil),
-            BiomarkerResult(name: "ApoB", value: 74, optimalMin: 40, optimalMax: 90, status: "optimal", whyItMatters: nil),
-            BiomarkerResult(name: "HbA1c", value: 5.1, optimalMin: 4.0, optimalMax: 5.6, status: "optimal", whyItMatters: nil),
-            BiomarkerResult(name: "TSH", value: 2.1, optimalMin: 0.5, optimalMax: 4.0, status: "optimal", whyItMatters: nil),
+            BiomarkerResult(name: "Ferritin", value: 34, unit: "ng/mL", optimalMin: 50, optimalMax: 150, status: "low", whyItMatters: "Iron stores — low ferritin blunts recovery and endurance."),
+            BiomarkerResult(name: "Vitamin D", value: 28, unit: "ng/mL", optimalMin: 30, optimalMax: 50, status: "suboptimal", whyItMatters: "Bone, immune, and mood support."),
+            BiomarkerResult(name: "HDL", value: 62, unit: "mg/dL", optimalMin: 40, optimalMax: 90, status: "optimal", whyItMatters: nil),
+            BiomarkerResult(name: "ApoB", value: 74, unit: "mg/dL", optimalMin: 40, optimalMax: 90, status: "optimal", whyItMatters: nil),
+            BiomarkerResult(name: "HbA1c", value: 5.1, unit: "%", optimalMin: 4.0, optimalMax: 5.6, status: "optimal", whyItMatters: nil),
+            BiomarkerResult(name: "TSH", value: 2.1, unit: "mIU/L", optimalMin: 0.5, optimalMax: 4.0, status: "optimal", whyItMatters: nil),
         ],
         stack: [
             StackItem(name: "Iron — gentle (bisglycinate)", dose: "25 mg", monthlyCost: 12, recommendationType: "add", reason: "Your ferritin (34) is below the endurance floor of 50 — repletion supports oxygen transport and recovery.", marker: "Ferritin"),

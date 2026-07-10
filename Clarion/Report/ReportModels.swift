@@ -22,6 +22,7 @@ struct StatusCounts: Codable {
 struct BiomarkerResult: Codable, Identifiable {
     var name: String
     var value: Double
+    var unit: String?
     var optimalMin: Double?
     var optimalMax: Double?
     var status: String // deficient | low | suboptimal | optimal | high | unknown

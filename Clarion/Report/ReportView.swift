@@ -19,6 +19,7 @@ struct ReportView: View {
                     content(r)
                 }
             }
+            .contentMargins(.bottom, 96, for: .scrollContent)
             .background(Color.paper.ignoresSafeArea())
             .navigationTitle("Report")
             .refreshable { await store.load() }
@@ -61,7 +62,7 @@ struct ReportView: View {
                 HStack(spacing: 8) {
                     pill("\(c.optimal) in range", .forest)
                     if c.low + c.high + c.suboptimal > 0 {
-                        pill("\(c.low + c.high + c.suboptimal) to review", .clay)
+                        pill("\(c.low + c.high + c.suboptimal) to review", .amber)
                     }
                 }
                 .padding(.top, 4)
@@ -110,7 +111,7 @@ struct BiomarkerRow: View {
         switch result.status {
         case "optimal": return .forest
         case "high", "deficient": return .clay
-        default: return Color(red: 0.7, green: 0.5, blue: 0.2) // amber
+        default: return .amber
         }
     }
 
@@ -120,7 +121,10 @@ struct BiomarkerRow: View {
                 Text(result.name).font(.system(.body, design: .serif)).foregroundStyle(Color.ink)
                 Spacer()
                 Text(format(result.value))
-                    .font(.system(.body, design: .monospaced)).foregroundStyle(Color.ink)
+                    .font(.system(.body, weight: .semibold)).monospacedDigit().foregroundStyle(Color.ink)
+                if let unit = result.unit, !unit.isEmpty {
+                    Text(unit).font(.caption2).foregroundStyle(Color.inkMuted)
+                }
                 Text(result.statusLabel)
                     .font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 8).padding(.vertical, 3)
@@ -129,12 +133,18 @@ struct BiomarkerRow: View {
             }
             if let lo = result.optimalMin, let hi = result.optimalMax, hi > lo {
                 rangeBar(lo: lo, hi: hi, value: result.value)
+                HStack {
+                    Text(format(lo)).font(.system(size: 10)).monospacedDigit().foregroundStyle(Color.inkMuted)
+                    Spacer()
+                    Text("optimal").font(.system(size: 10, weight: .semibold)).tracking(1).foregroundStyle(Color.forest.opacity(0.7))
+                    Spacer()
+                    Text(format(hi)).font(.system(size: 10)).monospacedDigit().foregroundStyle(Color.inkMuted)
+                }
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.black.opacity(0.05)))
+        .clarionCard(cornerRadius: 14)
     }
 
     private func rangeBar(lo: Double, hi: Double, value: Double) -> some View {
