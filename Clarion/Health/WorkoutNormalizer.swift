@@ -31,7 +31,7 @@ enum WorkoutNormalizer {
             }
             // Avg/max HR from the samples inside the workout window (nil if HR permission
             // wasn't granted or the workout has no HR samples).
-            let hr = (try? await health.heartRateStats(start: w.startDate, end: w.endDate)) ?? (nil, nil)
+            let hr = (try? await health.heartRateStats(start: w.startDate, end: w.endDate)) ?? (avg: nil, max: nil)
             out.append(WearableWorkout(
                 id: w.uuid.uuidString,
                 date: DailyNormalizer.dayString(w.startDate),

@@ -1,9 +1,6 @@
-# Xcode
-Clarion.xcodeproj/
+# Xcode user state / build products (the .xcodeproj itself IS source — hand-written)
 xcuserdata/
 DerivedData/
+build/
 *.xcuserstate
 .DS_Store
-# Generated at build time
-Clarion/Info.plist
-Clarion/Clarion.entitlements

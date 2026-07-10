@@ -6,11 +6,10 @@ enum Config {
     /// The Clarion web backend that receives normalized metrics.
     static let apiBase = URL(string: "https://clarionlabs.tech")!
 
-    /// Supabase project — SAME project as the web app so accounts are shared.
-    /// TODO(charlie): paste the real values from bloodwise-frontend/.env.local
-    /// (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY) before first build.
-    static let supabaseURL = URL(string: "https://YOUR-PROJECT.supabase.co")!
-    static let supabaseAnonKey = "YOUR-ANON-KEY"
+    /// Supabase project — SAME project as the web app so accounts are shared. The anon key is
+    /// a public client key (RLS enforces access), identical to what the website ships to browsers.
+    static let supabaseURL = URL(string: "https://mhtttwoxdehxnoxltqek.supabase.co")!
+    static let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1odHR0d294ZGVoeG5veGx0cWVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NTY5NjksImV4cCI6MjA4ODEzMjk2OX0.Dz2VkXqs9ZWeRNcSSXNVfzIufP66w_eAcB5pVTyZ8hQ"
 
     /// Sent with every ingest request so the server can detect stale installed versions.
     static var clientVersion: String {
