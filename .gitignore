@@ -1,0 +1,9 @@
+# Xcode
+Clarion.xcodeproj/
+xcuserdata/
+DerivedData/
+*.xcuserstate
+.DS_Store
+# Generated at build time
+Clarion/Info.plist
+Clarion/Clarion.entitlements

@@ -1,0 +1,39 @@
+# XcodeGen project definition — run `xcodegen` in this directory to (re)generate
+# Clarion.xcodeproj. Keeping the project declarative avoids pbxproj merge pain.
+name: Clarion
+options:
+  bundleIdPrefix: tech.clarionlabs
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  Clarion:
+    type: application
+    platform: iOS
+    sources: [Clarion]
+    info:
+      path: Clarion/Info.plist
+      properties:
+        CFBundleDisplayName: Clarion
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
+        # Read-only HealthKit — deliberately NO NSHealthUpdateUsageDescription.
+        NSHealthShareUsageDescription: >-
+          Clarion reads the health metrics relevant to your goals — sleep, heart rate
+          variability, resting heart rate, workouts, activity, and overnight wrist
+          temperature — to show how they connect with your bloodwork on your Clarion
+          dashboard. Your health data is never used for advertising or shared with
+          third parties.
+    entitlements:
+      path: Clarion/Clarion.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.background-delivery: true
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only for v1
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        CODE_SIGN_STYLE: Automatic
+        # DEVELOPMENT_TEAM: set in Xcode after Apple Developer enrollment
