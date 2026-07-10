@@ -164,18 +164,33 @@ struct HomeView: View {
 
     // MARK: - Dashboard door
 
+    @State private var openingDashboard = false
+
     private var dashboardLink: some View {
-        // Opens REAL Safari (not SFSafariViewController — per-app isolated storage means an
-        // in-app browser would NOT share the user's signed-in web session). Phase 2: replace
-        // with a magic-link handoff endpoint so this lands signed-in every time.
+        // Mints a one-time login link so the dashboard opens SIGNED IN (Safari doesn't share
+        // the app's Supabase session). Falls back to the plain URL if the handoff fails.
         Button {
-            UIApplication.shared.open(Config.apiBase.appendingPathComponent("dashboard/vitals"))
+            Task { await openDashboard() }
         } label: {
-            Label("Full analysis on clarionlabs.tech", systemImage: "arrow.up.forward.app")
+            Label(openingDashboard ? "Opening…" : "Full analysis on clarionlabs.tech",
+                  systemImage: "arrow.up.forward.app")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
+        .disabled(openingDashboard)
+    }
+
+    private func openDashboard() async {
+        openingDashboard = true
+        defer { openingDashboard = false }
+        let fallback = Config.apiBase.appendingPathComponent("dashboard/vitals")
+        guard let token = try? await auth.validAccessToken() else {
+            await UIApplication.shared.open(fallback)
+            return
+        }
+        let url = (try? await ClarionAPI.dashboardLoginLink(path: "/dashboard/vitals", accessToken: token)) ?? fallback
+        await UIApplication.shared.open(url)
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {

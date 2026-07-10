@@ -24,9 +24,9 @@ struct RootView: View {
     @EnvironmentObject private var auth: SupabaseAuth
     @EnvironmentObject private var sync: SyncCoordinator
 
-    /// TODO(Phase 1.5): fetch the real persona from the web profile at sign-in
-    /// (profile_type / menopause_stage / sex). Endurance is the founder-beachhead default.
-    @AppStorage("clarion_persona") private var personaRaw = Persona.endurance.rawValue
+    /// Cached across launches so permission scoping is right before the network returns;
+    /// refreshed from /api/account/persona on every sign-in.
+    @AppStorage("clarion_persona") private var personaRaw = Persona.general.rawValue
 
     var persona: Persona { Persona(rawValue: personaRaw) ?? .general }
 
@@ -34,6 +34,7 @@ struct RootView: View {
         if auth.isSignedIn {
             HomeView(persona: persona)
                 .task {
+                    await refreshPersona()
                     // Re-register observers every launch — registrations don't survive relaunch.
                     HealthStore.shared.registerBackgroundSync(persona: persona) {
                         Task { await sync.sync() }
@@ -42,5 +43,11 @@ struct RootView: View {
         } else {
             SignInView()
         }
+    }
+
+    private func refreshPersona() async {
+        guard let token = try? await auth.validAccessToken() else { return }
+        let fetched = await ClarionAPI.fetchPersona(accessToken: token)
+        personaRaw = fetched.rawValue
     }
 }

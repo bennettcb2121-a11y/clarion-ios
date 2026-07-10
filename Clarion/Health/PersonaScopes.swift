@@ -9,6 +9,7 @@ enum PersonaScopes {
     private static var core: Set<HKObjectType> {
         var types: Set<HKObjectType> = [
             HKObjectType.quantityType(forIdentifier: .restingHeartRate)!,
+            HKObjectType.quantityType(forIdentifier: .heartRate)!, // avg/max HR per workout
             HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)!,
             HKObjectType.quantityType(forIdentifier: .respiratoryRate)!,
             HKObjectType.quantityType(forIdentifier: .stepCount)!,
@@ -29,9 +30,8 @@ enum PersonaScopes {
         case .endurance:
             types.insert(HKObjectType.quantityType(forIdentifier: .vo2Max)!)
             types.insert(HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning)!)
-            types.insert(HKObjectType.quantityType(forIdentifier: .heartRate)!)
         case .strength:
-            types.insert(HKObjectType.quantityType(forIdentifier: .heartRate)!)
+            break
         case .menopause:
             if let wrist = HKObjectType.quantityType(forIdentifier: .appleSleepingWristTemperature) {
                 types.insert(wrist)

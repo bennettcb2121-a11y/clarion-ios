@@ -79,6 +79,31 @@ final class HealthStore {
         }
     }
 
+    /// Average + max heart rate over an interval (one workout). Returns (nil, nil) if the
+    /// heart-rate type is unavailable or no samples fall in the window.
+    func heartRateStats(start: Date, end: Date) async throws -> (avg: Double?, max: Double?) {
+        guard let hrType = HKObjectType.quantityType(forIdentifier: .heartRate) else { return (nil, nil) }
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKStatisticsQuery(
+                quantityType: hrType,
+                quantitySamplePredicate: predicate,
+                options: [.discreteAverage, .discreteMax]
+            ) { _, stats, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                continuation.resume(returning: (
+                    stats?.averageQuantity()?.doubleValue(for: unit),
+                    stats?.maximumQuantity()?.doubleValue(for: unit)
+                ))
+            }
+            store.execute(query)
+        }
+    }
+
     // MARK: - Samples
 
     func samples<T: HKSample>(

@@ -46,10 +46,17 @@ Scaffolded ahead of Xcode availability. Swift sources are syntax-validated but h
 
 ## Server-side contracts this app depends on
 
-Already live in bloodwise-frontend:
+All live in bloodwise-frontend, all bearer-authed:
 - `requireApiUser` accepts `Authorization: Bearer <supabase access token>` (RLS-scoped).
-- `/api/wearables/ingest` merges per-field with existing rows (Oura + Apple Health on one
-  account don't clobber each other), validates ranges, accepts `clientVersion`.
+- `POST /api/wearables/ingest` — merges per-field with existing rows (Oura + Apple Health on
+  one account don't clobber each other), validates ranges, accepts `clientVersion`.
+- `GET /api/account/persona` — `{ persona, sex, menopauseStage }`; the app scopes HealthKit
+  permissions to the persona (fetched at every sign-in, cached in `@AppStorage`).
+- `POST /api/account/app-login-link` — one-time magic link to a `/dashboard*` path so
+  "Full analysis" opens **signed in**. ⚠️ The path must be in Supabase Auth → URL
+  Configuration → Redirect URLs, or Supabase rejects the redirect.
+- `POST /api/account/delete` — native in-app deletion (App Store requirement); wearable rows
+  cascade on `auth.users` delete.
 
 ## Compliance guardrails (do not regress)
 
