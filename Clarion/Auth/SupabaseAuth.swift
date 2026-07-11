@@ -73,6 +73,9 @@ final class SupabaseAuth: ObservableObject {
         Keychain.delete(Self.keychainKey)
     }
 
+    /// Adopt a session produced by an external flow (OAuth — see OAuthSignIn.swift).
+    func applyExternalSession(_ s: SupabaseSession) { persist(s) }
+
     // MARK: - GoTrue REST
 
     private func persist(_ s: SupabaseSession) {
