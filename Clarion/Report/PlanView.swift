@@ -1,9 +1,18 @@
 import SwiftUI
 
-/// Native supplement plan: the lab-matched stack with dose, why, and monthly cost. Reads the
-/// same ReportStore (stack_snapshot) as the Report tab.
+/// The native plan: the lab-matched stack told the way Clarion tells it —
+///  - the money story ("$X/mo · $Y backed by your blood") with the three-bucket bar
+///  - today's protocol with one-tap dose logging (writes the same protocol_log the web reads)
+///  - stack grouped by verdict: Lab-backed / Keep steady / Consider cutting
+///  - retest windows pulled from the marker library
 struct PlanView: View {
     @ObservedObject var store: ReportStore
+    @ObservedObject var log: ProtocolLogStore
+
+    init(store: ReportStore, log: ProtocolLogStore) {
+        self.store = store
+        self.log = log
+    }
 
     var body: some View {
         NavigationStack {
@@ -22,9 +31,15 @@ struct PlanView: View {
             .contentMargins(.bottom, 96, for: .scrollContent)
             .background(Color.paper.ignoresSafeArea())
             .navigationTitle("Plan")
-            .refreshable { await store.load() }
+            .refreshable {
+                await store.load()
+                await log.load()
+            }
         }
-        .task { if case .loading = store.state { await store.load() } }
+        .task {
+            if case .loading = store.state { await store.load() }
+            await log.load()
+        }
     }
 
     @ViewBuilder
@@ -33,70 +48,257 @@ struct PlanView: View {
         if stack.isEmpty {
             empty("No supplements recommended right now — your panel looks well-covered.")
         } else {
-            VStack(spacing: 14) {
-                costHeader(monthly: r.stackMonthlyCost ?? 0, count: stack.count)
-                ForEach(stack) { StackRow(item: $0) }
+            let need = stack.filter { $0.bucket == .need }
+            let maintain = stack.filter { $0.bucket == .maintain }
+            let cut = stack.filter { $0.bucket == .cut }
+            let takeable = need + maintain
+            let retestByMarker = retestNotes(r)
+
+            VStack(spacing: Brand.s4) {
+                moneyCard(r, need: need, maintain: maintain, cut: cut).entrance(0)
+
+                if !takeable.isEmpty {
+                    todayCard(takeable).entrance(1)
+                }
+
+                group(need, title: "Lab-backed", note: "Your blood asks for these.", startIndex: 2, retest: retestByMarker)
+                group(maintain, title: "Keep steady", note: "Worth keeping — routine or training support.", startIndex: 2 + min(need.count, 1), retest: retestByMarker)
+                group(cut, title: "Consider cutting", note: "Nothing in your labs needs these.", startIndex: 3, retest: retestByMarker)
+
                 Text("Educational, not medical advice. Discuss changes with your clinician.")
-                    .font(.caption2).foregroundStyle(Color.inkMuted)
-                    .multilineTextAlignment(.center).padding(.top, 4)
+                    .font(.bodyFace(12))
+                    .foregroundStyle(Color.ink4)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, Brand.s1)
             }
-            .padding(20)
+            .padding(Brand.s5)
         }
     }
 
-    private func costHeader(monthly: Double, count: Int) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Your stack").font(.system(.headline, design: .serif)).foregroundStyle(Color.ink)
-                Text("\(count) supplement\(count == 1 ? "" : "s"), lab-matched").font(.footnote).foregroundStyle(Color.inkMuted)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("$\(Int(monthly.rounded()))").font(.system(.title2, weight: .semibold)).monospacedDigit().foregroundStyle(Color.forest)
-                Text("/ month").font(.caption).foregroundStyle(Color.inkMuted)
+    /// Marker → retest guidance from the report library (e.g. "Retest in 8–10 weeks").
+    private func retestNotes(_ r: ReportResponse) -> [String: String] {
+        var notes: [String: String] = [:]
+        for result in r.results ?? [] {
+            if let retest = result.retest, !retest.isEmpty {
+                notes[result.name] = retest
             }
         }
-        .padding(18)
-        .background(Color.forestWash.opacity(0.5), in: RoundedRectangle(cornerRadius: 18))
+        return notes
+    }
+
+    // MARK: - Money story
+
+    private func moneyCard(_ r: ReportResponse, need: [StackItem], maintain: [StackItem], cut: [StackItem]) -> some View {
+        let needCost = need.reduce(0) { $0 + $1.monthlyCost }
+        let maintainCost = maintain.reduce(0) { $0 + $1.monthlyCost }
+        let cutCost = cut.reduce(0) { $0 + $1.monthlyCost }
+        let planCost = needCost + maintainCost
+
+        return VStack(alignment: .leading, spacing: Brand.s3) {
+            Eyebrow("Your stack")
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text("$\(Int(planCost.rounded()))")
+                    .font(.display(34, weight: 700))
+                    .foregroundStyle(Color.ink)
+                Text("/mo")
+                    .font(.data(13, weight: 400))
+                    .foregroundStyle(Color.ink3)
+                Spacer()
+                if cutCost > 0 {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("save $\(Int(cutCost.rounded()))/mo")
+                            .font(.data(13, weight: 600))
+                            .foregroundStyle(Color.forest)
+                        Text("by cutting")
+                            .font(.bodyFace(11))
+                            .foregroundStyle(Color.ink3)
+                    }
+                }
+            }
+
+            MoneyBar(need: needCost, maintain: maintainCost, skip: max(cutCost, 0))
+
+            HStack(spacing: Brand.s4) {
+                legend("$\(Int(needCost.rounded())) backed by your blood", color: .forest)
+                if maintainCost > 0 {
+                    legend("$\(Int(maintainCost.rounded())) keep", color: .amber)
+                }
+                if cutCost > 0 {
+                    legend("$\(Int(cutCost.rounded())) cut", color: .ink4)
+                }
+            }
+        }
+        .padding(Brand.s5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clarionCard(cornerRadius: Brand.rXL)
+    }
+
+    private func legend(_ text: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(text)
+                .font(.data(11, weight: 400))
+                .foregroundStyle(Color.ink3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    // MARK: - Today's protocol (one-tap dose logging)
+
+    private func todayCard(_ items: [StackItem]) -> some View {
+        VStack(alignment: .leading, spacing: Brand.s3) {
+            HStack {
+                Eyebrow("Today")
+                Spacer()
+                let done = items.filter { log.isDone($0) }.count
+                Text("\(done)/\(items.count)")
+                    .font(.data(13, weight: 500))
+                    .foregroundStyle(done == items.count && !items.isEmpty ? Color.forest : Color.ink3)
+            }
+            ForEach(items) { item in
+                DoseRow(item: item, done: log.isDone(item)) {
+                    Haptics.commit()
+                    Task { await log.toggle(item) }
+                }
+                if item.id != items.last?.id {
+                    Divider().overlay(Color.line)
+                }
+            }
+        }
+        .padding(Brand.s4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clarionCard()
+    }
+
+    // MARK: - Verdict groups
+
+    @ViewBuilder
+    private func group(_ items: [StackItem], title: String, note: String, startIndex: Int, retest: [String: String]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Eyebrow(title)
+                Text(note)
+                    .font(.bodyFace(13))
+                    .foregroundStyle(Color.ink3)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, Brand.s2)
+
+            ForEach(items) { item in
+                StackCard(item: item, retest: item.marker.flatMap { retest[$0] })
+            }
+        }
     }
 
     private func empty(_ m: String) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Brand.s3) {
             Image(systemName: "pills.fill").font(.largeTitle).foregroundStyle(Color.forest)
-            Text(m).font(.subheadline).foregroundStyle(Color.inkMuted).multilineTextAlignment(.center)
+            Text(m).font(.bodyFace(15)).foregroundStyle(Color.ink3).multilineTextAlignment(.center)
         }
         .padding(40)
     }
 }
 
-struct StackRow: View {
+// MARK: - Rows
+
+/// One dose row: spring-filling forest check circle + serif name + mono dose.
+struct DoseRow: View {
     let item: StackItem
+    let done: Bool
+    let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(item.name)
-                .font(.system(.headline, design: .serif)).foregroundStyle(Color.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                if let marker = item.marker {
-                    Text(marker).font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Color.forestWash, in: Capsule()).foregroundStyle(Color.forestInk)
+        Button(action: action) {
+            HStack(spacing: Brand.s3) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(done ? Color.forest : Color.line2, lineWidth: 1.5)
+                        .background(Circle().fill(done ? Color.forest : Color.clear))
+                        .frame(width: 26, height: 26)
+                    if done {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .transition(.scale(scale: 0.3).combined(with: .opacity))
+                    }
+                }
+                .animation(.spring(response: 0.32, dampingFraction: 0.65), value: done)
+
+                Text(item.name)
+                    .font(.display(15, weight: 400))
+                    .foregroundStyle(done ? Color.ink3 : Color.ink)
+                    .strikethrough(done, color: Color.ink4)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Spacer()
+
+                Text(item.dose)
+                    .font(.data(13, weight: 500))
+                    .foregroundStyle(Color.ink3)
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle(haptic: false))
+    }
+}
+
+/// One stack card: serif name, mono dose right-aligned, marker + cost metadata row,
+/// the lab-tied reason, and the retest window when the library publishes one.
+struct StackCard: View {
+    let item: StackItem
+    let retest: String?
+
+    private var isCut: Bool { item.bucket == .cut }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Brand.s2) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(item.name)
+                    .font(.display(17, weight: 700))
+                    .foregroundStyle(isCut ? Color.ink3 : Color.ink)
+                    .strikethrough(isCut, color: Color.ink4)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: Brand.s2)
+                Text(item.dose)
+                    .font(.data(14, weight: 600))
+                    .foregroundStyle(isCut ? Color.ink4 : Color.ink)
+            }
+
+            HStack(spacing: Brand.s2) {
+                if let marker = item.marker, !marker.isEmpty {
+                    TagPill(marker, tone: .forestInk, wash: .forestWash)
                 }
                 if item.monthlyCost > 0 {
                     Text("~$\(Int(item.monthlyCost.rounded()))/mo")
-                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Color.inkMuted)
+                        .font(.data(12, weight: 400))
+                        .foregroundStyle(Color.ink3)
                 }
                 Spacer()
-                Text(item.dose)
-                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
-                    .foregroundStyle(Color.ink)
             }
-            Text(item.reason).font(.subheadline).foregroundStyle(Color.inkMuted)
+
+            Text(item.reason)
+                .font(.bodyFace(14))
+                .foregroundStyle(Color.ink2)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let retest, !isCut {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(retest)
+                        .font(.bodyFace(12.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(Color.ink3)
+                .padding(.top, 1)
+            }
         }
-        .padding(16)
+        .padding(Brand.s4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clarionCard(cornerRadius: 16)
+        .clarionCard(cornerRadius: Brand.r)
+        .opacity(isCut ? 0.75 : 1)
     }
 }

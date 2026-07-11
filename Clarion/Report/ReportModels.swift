@@ -1,6 +1,8 @@
 import Foundation
 
 /// Response of GET /api/report — the user's latest analyzed bloodwork + supplement stack.
+/// The enriched fields (verdict, labNormal*, science drawer) ship in the API's parity update;
+/// everything new is optional so the app renders fine against the older payload too.
 struct ReportResponse: Codable {
     var hasBloodwork: Bool
     var score: Int?
@@ -28,9 +30,34 @@ struct BiomarkerResult: Codable, Identifiable {
     var status: String // deficient | low | suboptimal | optimal | high | unknown
     var whyItMatters: String?
 
+    // Honest axis — what a real lab slip calls "normal" vs Clarion's band for this profile.
+    var labNormalMin: Double?
+    var labNormalMax: Double?
+    var labReferenceSource: String?
+    var isPersonalized: Bool?
+    var mismatch: String?
+    var profileLabel: String?
+    /// Plain-English one-sentence verdict ("Your 22 is 'normal' on a lab slip but…").
+    var verdict: String?
+    var verdictIsFlagged: Bool?
+
+    // Science drawer.
+    var description: String?
+    var foods: String?
+    var lifestyle: String?
+    var supplementNotes: String?
+    var retest: String?
+    var researchSummary: String?
+
     var id: String { name }
 
     var isFlagged: Bool { status == "low" || status == "deficient" || status == "high" || status == "suboptimal" }
+
+    /// Outside what even the LAB calls normal — a clinician conversation, not a supplement tweak.
+    var isOutsideLabNormal: Bool {
+        guard let lo = labNormalMin, let hi = labNormalMax, hi > lo else { return false }
+        return value < lo || value > hi
+    }
 
     /// Sort weight: flagged first (most severe), then optimal, then unknown.
     var sortRank: Int {
@@ -52,6 +79,10 @@ struct BiomarkerResult: Codable, Identifiable {
         default: return "—"
         }
     }
+
+    var hasScience: Bool {
+        researchSummary != nil || foods != nil || lifestyle != nil || supplementNotes != nil || retest != nil
+    }
 }
 
 struct StackItem: Codable, Identifiable {
@@ -61,6 +92,36 @@ struct StackItem: Codable, Identifiable {
     var recommendationType: String
     var reason: String
     var marker: String?
+    /// Canonical `protocol_log.checks` key — present once the API parity update ships;
+    /// the supplement name is the accepted legacy fallback.
+    var logKey: String?
 
     var id: String { name }
+
+    /// Key used when logging a dose against this row.
+    var protocolKey: String { logKey ?? name }
+
+    /// The three-bucket money grouping the web tells: Need (lab-backed adds),
+    /// Maintain (keeps/training support), Cut (drops).
+    var bucket: StackBucket {
+        switch recommendationType.lowercased() {
+        case "add", "increase", "start": return .need
+        case "consider_cut", "cut", "drop", "remove": return .cut
+        default: return .maintain
+        }
+    }
+}
+
+enum StackBucket: Int, CaseIterable {
+    case need = 0
+    case maintain = 1
+    case cut = 2
+
+    var title: String {
+        switch self {
+        case .need: return "Lab-backed"
+        case .maintain: return "Keep steady"
+        case .cut: return "Consider cutting"
+        }
+    }
 }

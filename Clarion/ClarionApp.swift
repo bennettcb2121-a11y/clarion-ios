@@ -6,27 +6,31 @@ struct ClarionApp: App {
     @StateObject private var sync: SyncCoordinator
 
     init() {
+        ClarionFonts.registerAll()
         let auth = SupabaseAuth()
         _auth = StateObject(wrappedValue: auth)
         _sync = StateObject(wrappedValue: SyncCoordinator(auth: auth))
         Self.applyBrandChrome()
     }
 
-    /// Brand the system chrome once: serif (New York) large titles everywhere — the biggest
-    /// glyphs on every screen should be the most Clarion, not stock SF Pro.
+    /// Brand the system chrome once: Libre Baskerville (the web's display face) large titles
+    /// everywhere — the biggest glyphs on every screen should be the most Clarion.
     private static func applyBrandChrome() {
-        let ink = UIColor(red: 0.09, green: 0.13, blue: 0.11, alpha: 1)
-
-        func serif(_ size: CGFloat, weight: UIFont.Weight) -> UIFont {
-            let base = UIFont.systemFont(ofSize: size, weight: weight)
-            guard let desc = base.fontDescriptor.withDesign(.serif) else { return base }
-            return UIFont(descriptor: desc, size: size)
+        let ink = UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(hex: 0xF3F6F4) : UIColor(hex: 0x16201C)
         }
 
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
-        nav.largeTitleTextAttributes = [.font: serif(34, weight: .bold), .foregroundColor: ink]
-        nav.titleTextAttributes = [.font: serif(17, weight: .semibold), .foregroundColor: ink]
+        nav.largeTitleTextAttributes = [
+            .font: ClarionFonts.uiFont(family: "Libre Baskerville", size: 32, weight: 700),
+            .foregroundColor: ink,
+            .kern: -0.5,
+        ]
+        nav.titleTextAttributes = [
+            .font: ClarionFonts.uiFont(family: "Libre Baskerville", size: 17, weight: 700),
+            .foregroundColor: ink,
+        ]
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
@@ -45,12 +49,14 @@ struct RootView: View {
     @EnvironmentObject private var auth: SupabaseAuth
     @EnvironmentObject private var sync: SyncCoordinator
     @StateObject private var report: ReportStore
+    @StateObject private var protocolLog: ProtocolLogStore
 
     init() {
-        // ReportStore needs auth; RootView is created inside the auth-provided environment, but
-        // StateObject init can't read @EnvironmentObject, so build it from a fresh SupabaseAuth
-        // that shares the same Keychain-persisted session.
+        // These stores need auth; RootView is created inside the auth-provided environment, but
+        // StateObject init can't read @EnvironmentObject, so build them from fresh SupabaseAuth
+        // instances that share the same Keychain-persisted session.
         _report = StateObject(wrappedValue: ReportStore(auth: SupabaseAuth()))
+        _protocolLog = StateObject(wrappedValue: ProtocolLogStore(auth: SupabaseAuth()))
     }
 
     /// Cached across launches so permission scoping is right before the network returns;
@@ -75,13 +81,13 @@ struct RootView: View {
     var body: some View {
         if auth.isSignedIn || uiTestVitals {
             TabView(selection: $tab) {
-                HomeView(persona: persona)
+                HomeView(persona: persona, report: report, log: protocolLog, tab: $tab)
                     .tabItem { Label("Home", systemImage: "house") }.tag(0)
                 VitalsView(auth: auth)
                     .tabItem { Label("Vitals", systemImage: "waveform.path.ecg") }.tag(1)
                 ReportView(store: report)
                     .tabItem { Label("Report", systemImage: "drop") }.tag(2)
-                PlanView(store: report)
+                PlanView(store: report, log: protocolLog)
                     .tabItem { Label("Plan", systemImage: "pills") }.tag(3)
                 NavigationStack { SettingsView() }
                     .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
