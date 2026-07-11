@@ -18,18 +18,18 @@ struct SettingsView: View {
             Section {
                 HStack(spacing: 14) {
                     Text(initials)
-                        .font(.system(size: 18, weight: .bold, design: .serif))
+                        .font(.display(17, weight: 700))
                         .foregroundStyle(Color.forestInk)
                         .frame(width: 52, height: 52)
                         .background(Color.forestWash, in: Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(email.isEmpty ? "Clarion member" : email)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.ui(15, weight: 600))
                             .foregroundStyle(Color.ink)
                             .lineLimit(1)
                         Text("Clarion member")
-                            .font(.footnote)
-                            .foregroundStyle(Color.inkMuted)
+                            .font(.bodyFace(13))
+                            .foregroundStyle(Color.ink3)
                     }
                 }
                 .padding(.vertical, 4)
@@ -40,8 +40,8 @@ struct SettingsView: View {
                     linkRow("Manage Health permissions", system: "heart.text.square")
                 }
                 Text("Clarion only reads the metrics relevant to your goals, and never uses health data for advertising.")
-                    .font(.footnote)
-                    .foregroundStyle(Color.inkMuted)
+                    .font(.bodyFace(13))
+                    .foregroundStyle(Color.ink3)
             } header: {
                 sectionHeader("Health data")
             }
@@ -65,6 +65,7 @@ struct SettingsView: View {
                     Haptics.warning()
                     auth.signOut()
                 }
+                .font(.bodyFace(16))
                 .foregroundStyle(Color.ink)
             } header: {
                 sectionHeader("Account")
@@ -111,19 +112,16 @@ struct SettingsView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(Color.forest)
                 .frame(width: 24)
-            Text(title).foregroundStyle(Color.ink)
+            Text(title).font(.bodyFace(16)).foregroundStyle(Color.ink)
             Spacer()
             Image(systemName: "arrow.up.right")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.inkMuted.opacity(0.6))
+                .foregroundStyle(Color.ink4)
         }
     }
 
     private func sectionHeader(_ t: String) -> some View {
-        Text(t.uppercased())
-            .font(.system(size: 12, weight: .semibold))
-            .tracking(1.6)
-            .foregroundStyle(Color.inkMuted)
+        Eyebrow(t)
     }
 
     private func deleteAccount() async {

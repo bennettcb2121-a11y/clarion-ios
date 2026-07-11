@@ -87,19 +87,19 @@ struct VitalsView: View {
     private func staleBanner(_ snap: WearableSnapshot) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "clock.badge.exclamationmark")
-                .foregroundStyle(Color(red: 0.7, green: 0.5, blue: 0.2))
+                .foregroundStyle(Color.amberInk)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Latest reading is \(snap.readingAgeDays ?? 0) days old")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.ui(14, weight: 600))
                     .foregroundStyle(Color.ink)
                 Text("Open the \(providerName(snap.provider)) app so your device uploads its recent nights, then pull to refresh.")
-                    .font(.footnote)
-                    .foregroundStyle(Color.inkMuted)
+                    .font(.bodyFace(13))
+                    .foregroundStyle(Color.ink2)
             }
             Spacer()
         }
         .padding(14)
-        .background(Color(red: 0.98, green: 0.94, blue: 0.85), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.amberWash, in: RoundedRectangle(cornerRadius: Brand.r))
     }
 
     private func providerName(_ p: String) -> String {
@@ -113,7 +113,7 @@ struct VitalsView: View {
         return VStack(spacing: 16) {
             ReadinessRing(score: readiness)
             Text(coachingLine(readiness, stale: snap.isStale))
-                .font(.system(.title3, design: .serif))
+                .font(.displayItalic(17))
                 .foregroundStyle(Color.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -136,9 +136,10 @@ struct VitalsView: View {
         .frame(maxWidth: .infinity)
         .padding(22)
         .background(
-            LinearGradient(colors: [Color.white, Color.forestWash.opacity(0.6)], startPoint: .top, endPoint: .bottom),
-            in: RoundedRectangle(cornerRadius: 26)
+            LinearGradient(colors: [Color.surface, Color.forestWash.opacity(0.5)], startPoint: .top, endPoint: .bottom),
+            in: RoundedRectangle(cornerRadius: Brand.rXL)
         )
+        .overlay(RoundedRectangle(cornerRadius: Brand.rXL).stroke(Color.line))
         .shadow(color: Color.forest.opacity(0.08), radius: 16, y: 6)
     }
 
@@ -153,10 +154,10 @@ struct VitalsView: View {
 
     private func chip(_ text: String, good: Bool) -> some View {
         Text(text)
-            .font(.system(size: 13, weight: .semibold))
+            .font(.data(12, weight: 500))
             .padding(.horizontal, 13).padding(.vertical, 7)
-            .background(good ? Color.forestWash : Color(.systemGray5), in: Capsule())
-            .foregroundStyle(good ? Color.forestInk : Color.inkMuted)
+            .background(good ? Color.forestWash : Color.paperDim, in: Capsule())
+            .foregroundStyle(good ? Color.forestInk : Color.ink3)
     }
 
     private func prettyDay(_ iso: String) -> String {
@@ -167,10 +168,7 @@ struct VitalsView: View {
     }
 
     private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.system(size: 12, weight: .semibold))
-            .tracking(1.6)
-            .foregroundStyle(Color.inkMuted)
+        Eyebrow(text)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 

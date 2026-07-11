@@ -13,16 +13,9 @@ struct SignInView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 22) {
-                    VStack(spacing: 6) {
-                        Text("Clarion Labs")
-                            .font(.system(size: 40, weight: .bold, design: .serif))
-                            .foregroundStyle(Color.ink)
-                        Text("brilliantly clear")
-                            .font(.footnote)
-                            .foregroundStyle(Color.inkMuted)
-                    }
-                    .padding(.top, 60)
-                    .padding(.bottom, 8)
+                    Wordmark(nameSize: 36, centered: true)
+                        .padding(.top, 60)
+                        .padding(.bottom, 8)
 
                     // Primary path: the providers most Clarion accounts were created with.
                     SignInWithAppleButton(.signIn) { _ in } onCompletion: { _ in }
@@ -39,13 +32,13 @@ struct SignInView: View {
                     Button { Task { await oauth(.google) } } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "g.circle.fill")
-                            Text("Continue with Google").fontWeight(.medium)
+                            Text("Continue with Google").font(.ui(15, weight: 600))
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .foregroundStyle(Color.ink)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.black.opacity(0.12)))
+                        .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.r))
+                        .overlay(RoundedRectangle(cornerRadius: Brand.r).stroke(Color.line2))
                     }
                     .buttonStyle(PressableStyle())
                     .disabled(busy)
@@ -58,8 +51,8 @@ struct SignInView: View {
                             Haptics.tap()
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { emailExpanded = true }
                         }
-                        .font(.footnote)
-                        .foregroundStyle(Color.inkMuted)
+                        .font(.bodyFace(13.5))
+                        .foregroundStyle(Color.ink3)
                         .padding(.top, 2)
                     }
 
@@ -73,8 +66,8 @@ struct SignInView: View {
                     if busy { ProgressView().padding(.top, 4) }
 
                     Text("Use the same account as clarionlabs.tech. Your health data syncs privately to your own dashboard — never for advertising.")
-                        .font(.caption)
-                        .foregroundStyle(Color.inkMuted)
+                        .font(.bodyFace(12.5))
+                        .foregroundStyle(Color.ink3)
                         .multilineTextAlignment(.center)
                         .padding(.top, 8)
                 }
@@ -91,14 +84,16 @@ struct SignInView: View {
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .font(.bodyFace(16))
                 .padding(14)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.1)))
+                .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.rSM + 2))
+                .overlay(RoundedRectangle(cornerRadius: Brand.rSM + 2).stroke(Color.line2))
             SecureField("Password", text: $password)
                 .textContentType(.password)
+                .font(.bodyFace(16))
                 .padding(14)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.1)))
+                .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.rSM + 2))
+                .overlay(RoundedRectangle(cornerRadius: Brand.rSM + 2).stroke(Color.line2))
 
             Button {
                 Task { await signIn() }
@@ -109,8 +104,8 @@ struct SignInView: View {
             .disabled(busy || email.isEmpty || password.isEmpty)
 
             Link("Forgot password?", destination: Config.apiBase.appendingPathComponent("reset-password"))
-                .font(.footnote)
-                .foregroundStyle(Color.forestInk)
+                .font(.ui(13, weight: 600))
+                .foregroundStyle(Color.forest)
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
     }

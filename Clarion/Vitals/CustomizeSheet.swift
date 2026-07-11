@@ -20,10 +20,10 @@ struct CustomizeSheet: View {
                         if let m = VitalsMetric.catalog[key] {
                             HStack(spacing: 12) {
                                 Image(systemName: "line.3.horizontal")
-                                    .foregroundStyle(Color.inkMuted.opacity(0.6))
+                                    .foregroundStyle(Color.ink4)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(m.title).font(.system(.body, design: .serif))
-                                    Text(m.caption).font(.caption).foregroundStyle(Color.inkMuted)
+                                    Text(m.title).font(.display(15, weight: 400)).foregroundStyle(Color.ink)
+                                    Text(m.caption).font(.bodyFace(12)).foregroundStyle(Color.ink3)
                                 }
                                 Spacer()
                                 Button {
@@ -62,8 +62,8 @@ struct CustomizeSheet: View {
                                 }
                                 .buttonStyle(.plain)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(m.title).font(.system(.body, design: .serif))
-                                    Text(m.caption).font(.caption).foregroundStyle(Color.inkMuted)
+                                    Text(m.title).font(.display(15, weight: 400)).foregroundStyle(Color.ink)
+                                    Text(m.caption).font(.bodyFace(12)).foregroundStyle(Color.ink3)
                                 }
                             }
                         }
