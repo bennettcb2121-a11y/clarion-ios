@@ -18,12 +18,12 @@ struct MetricCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(isTrendVariant ? "Readiness trend" : metric.title)
-                    .font(.display(15.5, weight: 700))
+                    .font(.clarionDisplay(15.5))
                     .foregroundStyle(Color.ink)
                 Spacer()
                 if let t = trend { trendChip(t) }
                 Text("\(min(series.count, daily.count))d")
-                    .font(.ui(11, weight: 600))
+                    .font(.clarionLabel(11))
                     .foregroundStyle(Color.ink3)
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(Color.paperDim, in: Capsule())
@@ -32,10 +32,10 @@ struct MetricCard: View {
             if !isTrendVariant {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(latest.map { format($0) } ?? "—")
-                        .font(.data(26, weight: 600))
+                        .font(.clarionData(26))
                         .foregroundStyle(Color.ink)
                     if !metric.unit.isEmpty {
-                        Text(metric.unit).font(.data(11, weight: 400)).foregroundStyle(Color.ink3)
+                        Text(metric.unit).font(.clarionData(11)).foregroundStyle(Color.ink3)
                     }
                 }
             }
@@ -45,12 +45,12 @@ struct MetricCard: View {
                     .frame(height: isTrendVariant ? 92 : 64)
                 HStack(spacing: 6) {
                     RoundedRectangle(cornerRadius: 2).fill(Color.forestWash).frame(width: 16, height: 8)
-                    Text("your usual range").font(.bodyFace(11)).foregroundStyle(Color.ink3)
+                    Text("your usual range").font(.clarionBody(11)).foregroundStyle(Color.ink3)
                 }
             }
 
             Text(isTrendVariant ? "How your recovery has moved across the window" : metric.caption)
-                .font(.bodyFace(13)).foregroundStyle(Color.ink3)
+                .font(.clarionBody(13)).foregroundStyle(Color.ink3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
@@ -122,7 +122,7 @@ struct MetricCard: View {
     private func trendChip(_ t: (rising: Bool, pct: Int)) -> some View {
         let good = t.rising == metric.higherIsBetter
         return Text("\(t.rising ? "▲" : "▼") \(t.pct)%")
-            .font(.data(12, weight: 600))
+            .font(.clarionData(12))
             .foregroundStyle(good ? Color.forest : Color.amber)
     }
 
@@ -139,10 +139,10 @@ struct InsightCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(insight.title)
-                .font(.display(15.5, weight: 700))
+                .font(.clarionDisplay(15.5))
                 .foregroundStyle(Color.ink)
             Text(insight.body)
-                .font(.bodyFace(14))
+                .font(.clarionBody(14))
                 .foregroundStyle(Color.ink2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -176,14 +176,14 @@ struct WorkoutsCard: View {
                         .frame(width: 34, height: 34)
                         .background(Color.forestWash, in: Circle())
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(w.type.capitalized).font(.display(14, weight: 700)).foregroundStyle(Color.ink)
-                        Text(prettyDate(w.date)).font(.bodyFace(12)).foregroundStyle(Color.ink3)
+                        Text(w.type.capitalized).font(.clarionDisplay(14)).foregroundStyle(Color.ink)
+                        Text(prettyDate(w.date)).font(.clarionData(12)).foregroundStyle(Color.ink3) // dates are data
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
-                        if let km = w.distanceKm { Text(String(format: "%.1f km", km)).font(.data(13, weight: 500)).foregroundStyle(Color.ink) }
+                        if let km = w.distanceKm { Text(String(format: "%.1f km", km)).font(.clarionData(13)).foregroundStyle(Color.ink) }
                         Text("\(Int(w.durationMin))m · \(w.avgHeartRate.map { "\(Int($0)) bpm" } ?? "—")")
-                            .font(.data(11.5, weight: 400)).foregroundStyle(Color.ink3)
+                            .font(.clarionData(11.5)).foregroundStyle(Color.ink3)
                     }
                 }
                 .padding(.vertical, 10)

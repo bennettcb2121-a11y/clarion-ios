@@ -6,15 +6,21 @@ struct ClarionApp: App {
     @StateObject private var sync: SyncCoordinator
 
     init() {
-        ClarionFonts.registerAll()
         let auth = SupabaseAuth()
         _auth = StateObject(wrappedValue: auth)
         _sync = StateObject(wrappedValue: SyncCoordinator(auth: auth))
         Self.applyBrandChrome()
     }
 
-    /// Brand the system chrome once: Libre Baskerville (the web's display face) large titles
-    /// everywhere — the biggest glyphs on every screen should be the most Clarion.
+    /// New York serif 600 (the display role) for a UIKit context, per clarion-tokens.json.
+    private static func serifTitleFont(size: CGFloat) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: .semibold)
+        guard let descriptor = base.fontDescriptor.withDesign(.serif) else { return base }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+
+    /// Brand the system chrome once: display-serif large titles everywhere — the biggest
+    /// glyphs on every screen should be the most Clarion.
     private static func applyBrandChrome() {
         let ink = UIColor { traits in
             traits.userInterfaceStyle == .dark ? UIColor(hex: 0xF3F6F4) : UIColor(hex: 0x16201C)
@@ -23,12 +29,12 @@ struct ClarionApp: App {
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
         nav.largeTitleTextAttributes = [
-            .font: ClarionFonts.uiFont(family: "Libre Baskerville", size: 32, weight: 700),
+            .font: serifTitleFont(size: 32),
             .foregroundColor: ink,
-            .kern: -0.5,
+            .kern: -0.48, // -0.015em at 32pt, per the spec's display letterSpacing
         ]
         nav.titleTextAttributes = [
-            .font: ClarionFonts.uiFont(family: "Libre Baskerville", size: 17, weight: 700),
+            .font: serifTitleFont(size: 17),
             .foregroundColor: ink,
         ]
         UINavigationBar.appearance().standardAppearance = nav

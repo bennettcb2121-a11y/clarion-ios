@@ -87,13 +87,13 @@ struct VitalsView: View {
     private func staleBanner(_ snap: WearableSnapshot) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "clock.badge.exclamationmark")
-                .foregroundStyle(Color.amberInk)
+                .foregroundStyle(Color.amber)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Latest reading is \(snap.readingAgeDays ?? 0) days old")
-                    .font(.ui(14, weight: 600))
+                    .font(.clarionLabel(14))
                     .foregroundStyle(Color.ink)
                 Text("Open the \(providerName(snap.provider)) app so your device uploads its recent nights, then pull to refresh.")
-                    .font(.bodyFace(13))
+                    .font(.clarionBody(13))
                     .foregroundStyle(Color.ink2)
             }
             Spacer()
@@ -113,7 +113,7 @@ struct VitalsView: View {
         return VStack(spacing: 16) {
             ReadinessRing(score: readiness)
             Text(coachingLine(readiness, stale: snap.isStale))
-                .font(.displayItalic(17))
+                .font(.clarionDisplayItalic(17))
                 .foregroundStyle(Color.ink)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -154,7 +154,7 @@ struct VitalsView: View {
 
     private func chip(_ text: String, good: Bool) -> some View {
         Text(text)
-            .font(.data(12, weight: 500))
+            .font(.clarionData(12))
             .padding(.horizontal, 13).padding(.vertical, 7)
             .background(good ? Color.forestWash : Color.paperDim, in: Capsule())
             .foregroundStyle(good ? Color.forestInk : Color.ink3)

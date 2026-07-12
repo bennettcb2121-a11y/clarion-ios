@@ -66,7 +66,7 @@ struct PlanView: View {
                 group(cut, title: "Consider cutting", note: "Nothing in your labs needs these.", startIndex: 3, retest: retestByMarker)
 
                 Text("Educational, not medical advice. Discuss changes with your clinician.")
-                    .font(.bodyFace(12))
+                    .font(.clarionBody(12))
                     .foregroundStyle(Color.ink4)
                     .multilineTextAlignment(.center)
                     .padding(.top, Brand.s1)
@@ -98,19 +98,19 @@ struct PlanView: View {
             Eyebrow("Your stack")
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text("$\(Int(planCost.rounded()))")
-                    .font(.display(34, weight: 700))
+                    .font(.clarionDisplay(34))
                     .foregroundStyle(Color.ink)
                 Text("/mo")
-                    .font(.data(13, weight: 400))
+                    .font(.clarionData(13))
                     .foregroundStyle(Color.ink3)
                 Spacer()
                 if cutCost > 0 {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text("save $\(Int(cutCost.rounded()))/mo")
-                            .font(.data(13, weight: 600))
+                            .font(.clarionData(13))
                             .foregroundStyle(Color.forest)
                         Text("by cutting")
-                            .font(.bodyFace(11))
+                            .font(.clarionBody(11))
                             .foregroundStyle(Color.ink3)
                     }
                 }
@@ -137,7 +137,7 @@ struct PlanView: View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 6, height: 6)
             Text(text)
-                .font(.data(11, weight: 400))
+                .font(.clarionData(11))
                 .foregroundStyle(Color.ink3)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -153,7 +153,7 @@ struct PlanView: View {
                 Spacer()
                 let done = items.filter { log.isDone($0) }.count
                 Text("\(done)/\(items.count)")
-                    .font(.data(13, weight: 500))
+                    .font(.clarionData(13))
                     .foregroundStyle(done == items.count && !items.isEmpty ? Color.forest : Color.ink3)
             }
             ForEach(items) { item in
@@ -179,7 +179,7 @@ struct PlanView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Eyebrow(title)
                 Text(note)
-                    .font(.bodyFace(13))
+                    .font(.clarionBody(13))
                     .foregroundStyle(Color.ink3)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -194,7 +194,7 @@ struct PlanView: View {
     private func empty(_ m: String) -> some View {
         VStack(spacing: Brand.s3) {
             Image(systemName: "pills.fill").font(.largeTitle).foregroundStyle(Color.forest)
-            Text(m).font(.bodyFace(15)).foregroundStyle(Color.ink3).multilineTextAlignment(.center)
+            Text(m).font(.clarionBody(15)).foregroundStyle(Color.ink3).multilineTextAlignment(.center)
         }
         .padding(40)
     }
@@ -226,7 +226,7 @@ struct DoseRow: View {
                 .animation(.spring(response: 0.32, dampingFraction: 0.65), value: done)
 
                 Text(item.name)
-                    .font(.display(15, weight: 400))
+                    .font(.clarionDisplay(15))
                     .foregroundStyle(done ? Color.ink3 : Color.ink)
                     .strikethrough(done, color: Color.ink4)
                     .lineLimit(1)
@@ -235,7 +235,7 @@ struct DoseRow: View {
                 Spacer()
 
                 Text(item.dose)
-                    .font(.data(13, weight: 500))
+                    .font(.clarionData(13))
                     .foregroundStyle(Color.ink3)
             }
             .padding(.vertical, 6)
@@ -257,13 +257,13 @@ struct StackCard: View {
         VStack(alignment: .leading, spacing: Brand.s2) {
             HStack(alignment: .firstTextBaseline) {
                 Text(item.name)
-                    .font(.display(17, weight: 700))
+                    .font(.clarionDisplay(17))
                     .foregroundStyle(isCut ? Color.ink3 : Color.ink)
                     .strikethrough(isCut, color: Color.ink4)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: Brand.s2)
                 Text(item.dose)
-                    .font(.data(14, weight: 600))
+                    .font(.clarionData(14))
                     .foregroundStyle(isCut ? Color.ink4 : Color.ink)
             }
 
@@ -273,14 +273,14 @@ struct StackCard: View {
                 }
                 if item.monthlyCost > 0 {
                     Text("~$\(Int(item.monthlyCost.rounded()))/mo")
-                        .font(.data(12, weight: 400))
+                        .font(.clarionData(12))
                         .foregroundStyle(Color.ink3)
                 }
                 Spacer()
             }
 
             Text(item.reason)
-                .font(.bodyFace(14))
+                .font(.clarionBody(14))
                 .foregroundStyle(Color.ink2)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -289,7 +289,7 @@ struct StackCard: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 10, weight: .semibold))
                     Text(retest)
-                        .font(.bodyFace(12.5))
+                        .font(.clarionBody(12.5))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .foregroundStyle(Color.ink3)

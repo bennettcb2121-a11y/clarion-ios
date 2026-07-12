@@ -31,11 +31,11 @@ struct ReadinessRing: View {
 
             VStack(spacing: 4) {
                 Text(score == nil ? "—" : "\(shownValue)")
-                    .font(.display(52, weight: 700))
+                    .font(.clarionDisplay(52))
                     .monospacedDigit()
                     .foregroundStyle(Color.ink)
                 Text("READINESS")
-                    .font(.ui(10.5, weight: 600))
+                    .font(.clarionLabel(10.5))
                     .tracking(1.8)
                     .foregroundStyle(Color.forest)
             }

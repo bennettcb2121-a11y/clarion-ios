@@ -32,7 +32,7 @@ struct SignInView: View {
                     Button { Task { await oauth(.google) } } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "g.circle.fill")
-                            Text("Continue with Google").font(.ui(15, weight: 600))
+                            Text("Continue with Google").font(.clarionLabel(15))
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
@@ -51,14 +51,14 @@ struct SignInView: View {
                             Haptics.tap()
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { emailExpanded = true }
                         }
-                        .font(.bodyFace(13.5))
+                        .font(.clarionBody(13.5))
                         .foregroundStyle(Color.ink3)
                         .padding(.top, 2)
                     }
 
                     if let errorMessage {
                         Text(errorMessage)
-                            .font(.footnote)
+                            .font(.clarionBody(13))
                             .foregroundStyle(Color.clay)
                             .multilineTextAlignment(.center)
                     }
@@ -66,7 +66,7 @@ struct SignInView: View {
                     if busy { ProgressView().padding(.top, 4) }
 
                     Text("Use the same account as clarionlabs.tech. Your health data syncs privately to your own dashboard — never for advertising.")
-                        .font(.bodyFace(12.5))
+                        .font(.clarionBody(12.5))
                         .foregroundStyle(Color.ink3)
                         .multilineTextAlignment(.center)
                         .padding(.top, 8)
@@ -84,13 +84,13 @@ struct SignInView: View {
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .font(.bodyFace(16))
+                .font(.clarionBody(16))
                 .padding(14)
                 .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.rSM + 2))
                 .overlay(RoundedRectangle(cornerRadius: Brand.rSM + 2).stroke(Color.line2))
             SecureField("Password", text: $password)
                 .textContentType(.password)
-                .font(.bodyFace(16))
+                .font(.clarionBody(16))
                 .padding(14)
                 .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.rSM + 2))
                 .overlay(RoundedRectangle(cornerRadius: Brand.rSM + 2).stroke(Color.line2))
@@ -104,7 +104,7 @@ struct SignInView: View {
             .disabled(busy || email.isEmpty || password.isEmpty)
 
             Link("Forgot password?", destination: Config.apiBase.appendingPathComponent("reset-password"))
-                .font(.ui(13, weight: 600))
+                .font(.clarionLabel(13))
                 .foregroundStyle(Color.forest)
         }
         .transition(.opacity.combined(with: .move(edge: .top)))

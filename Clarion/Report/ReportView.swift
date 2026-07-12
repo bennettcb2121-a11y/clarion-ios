@@ -77,7 +77,7 @@ struct ReportView: View {
             }
 
             Text("Educational, not medical advice. Discuss changes with your clinician.")
-                .font(.bodyFace(12))
+                .font(.clarionBody(12))
                 .foregroundStyle(Color.ink4)
                 .multilineTextAlignment(.center)
                 .padding(.top, Brand.s2)
@@ -96,18 +96,19 @@ struct ReportView: View {
             HStack(spacing: Brand.s2) {
                 TagPill("\(optimal) in range", tone: .forestInk, wash: .forestWash)
                 if flagged > 0 {
-                    TagPill("\(flagged) to review", tone: .amberInk, wash: .amberWash)
+                    TagPill("\(flagged) to review", tone: .amber, wash: .amberWash)
                 }
             }
 
             if let profile = results.compactMap(\.profileLabel).first {
                 Text("Ranges calibrated for a \(profile).")
-                    .font(.bodyFace(13.5))
+                    .font(.clarionBody(13.5))
                     .foregroundStyle(Color.ink3)
             }
             if let updated = prettyDate(lastUpdated) {
+                // The report's "issued" metadata line — the one sanctioned docmono use.
                 Text("Panel from \(updated)")
-                    .font(.data(11, weight: 400))
+                    .font(.clarionDocMono(11))
                     .foregroundStyle(Color.ink4)
             }
         }
@@ -124,7 +125,7 @@ struct ReportView: View {
             ForEach(rows, id: \.category) { row in
                 HStack(spacing: Brand.s3) {
                     Text(row.category.rawValue)
-                        .font(.bodyFace(14.5))
+                        .font(.clarionBody(14.5))
                         .foregroundStyle(Color.ink2)
                         .frame(width: 148, alignment: .leading)
                         .lineLimit(1)
@@ -141,8 +142,8 @@ struct ReportView: View {
                         .frame(maxHeight: .infinity, alignment: .center)
                     }
                     Text("\(row.score)")
-                        .font(.data(13, weight: 500))
-                        .foregroundStyle(row.score >= 90 ? Color.forest : (row.score >= 70 ? Color.ink2 : Color.amberInk))
+                        .font(.clarionData(13))
+                        .foregroundStyle(row.score >= 90 ? Color.forest : (row.score >= 70 ? Color.ink2 : Color.amber))
                         .frame(width: 32, alignment: .trailing)
                 }
                 .frame(height: 20)
@@ -160,7 +161,7 @@ struct ReportView: View {
             Eyebrow(title)
             if let note {
                 Text(note)
-                    .font(.bodyFace(13))
+                    .font(.clarionBody(13))
                     .foregroundStyle(Color.ink3)
             }
         }
@@ -171,15 +172,15 @@ struct ReportView: View {
     private var emptyState: some View {
         VStack(spacing: Brand.s3) {
             Image(systemName: "drop.fill").font(.largeTitle).foregroundStyle(Color.forest)
-            Text("No bloodwork yet").font(.display(19, weight: 700)).foregroundStyle(Color.ink)
+            Text("No bloodwork yet").font(.clarionDisplay(19)).foregroundStyle(Color.ink)
             Text("Upload your labs when you're ready — your personalized report builds from there.")
-                .font(.bodyFace(15)).foregroundStyle(Color.ink3).multilineTextAlignment(.center)
+                .font(.clarionBody(15)).foregroundStyle(Color.ink3).multilineTextAlignment(.center)
         }
         .padding(40)
     }
 
     private func errorState(_ m: String) -> some View {
-        Text(m).font(.bodyFace(15)).foregroundStyle(Color.ink3).padding(40)
+        Text(m).font(.clarionBody(15)).foregroundStyle(Color.ink3).padding(40)
     }
 
     private func prettyDate(_ iso: String?) -> String? {
@@ -213,18 +214,18 @@ struct MarkerConsultCard: View {
             // Header: name / value / status.
             HStack(alignment: .firstTextBaseline, spacing: Brand.s2) {
                 Text(result.name)
-                    .font(.display(18, weight: 700))
+                    .font(.clarionDisplay(18))
                     .foregroundStyle(Color.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer(minLength: Brand.s2)
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(format(result.value))
-                        .font(.data(19, weight: 600))
+                        .font(.clarionData(19))
                         .foregroundStyle(Color.ink)
                     if let unit = result.unit, !unit.isEmpty {
                         Text(unit)
-                            .font(.data(11, weight: 400))
+                            .font(.clarionData(11))
                             .foregroundStyle(Color.ink3)
                     }
                 }
@@ -233,7 +234,7 @@ struct MarkerConsultCard: View {
             HStack(spacing: Brand.s2) {
                 TagPill(status: result.status, label: result.statusLabel)
                 if result.isPersonalized == true {
-                    TagPill("Yours", tone: .forestInk, wash: .forestWash2)
+                    TagPill("Yours", tone: .forestInk, wash: .forestWash)
                 }
                 if let gain = forecast, gain > 0 {
                     TagPill("+\(gain) pts if fixed", tone: .forestInk, wash: .forestWash)
@@ -243,12 +244,12 @@ struct MarkerConsultCard: View {
             // The verdict — Clarion's one honest sentence about this number.
             if let verdict = result.verdict, !verdict.isEmpty {
                 Text(verdict)
-                    .font(.bodyFace(14.5))
+                    .font(.clarionBody(14.5))
                     .foregroundStyle(result.verdictIsFlagged == true ? Color.ink : Color.ink2)
                     .fixedSize(horizontal: false, vertical: true)
             } else if let why = result.whyItMatters, !why.isEmpty, result.isFlagged {
                 Text(why)
-                    .font(.bodyFace(14.5))
+                    .font(.clarionBody(14.5))
                     .foregroundStyle(Color.ink2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -272,7 +273,7 @@ struct MarkerConsultCard: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(showScience ? "Hide the science" : "Show the science")
-                            .font(.ui(13, weight: 600))
+                            .font(.clarionLabel(13))
                         Image(systemName: "chevron.right")
                             .font(.system(size: 9, weight: .bold))
                             .rotationEffect(.degrees(showScience ? 90 : 0))
@@ -327,11 +328,11 @@ struct ScienceDrawer: View {
         if let text, !text.isEmpty {
             VStack(alignment: .leading, spacing: 3) {
                 Text(label.uppercased())
-                    .font(.ui(10.5, weight: 600))
+                    .font(.clarionLabel(10.5))
                     .tracking(1.2)
                     .foregroundStyle(Color.forest)
                 Text(text)
-                    .font(.bodyFace(14))
+                    .font(.clarionBody(14))
                     .foregroundStyle(Color.ink2)
                     .fixedSize(horizontal: false, vertical: true)
             }

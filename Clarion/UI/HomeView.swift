@@ -22,7 +22,7 @@ struct HomeView: View {
                     if !HealthStore.isAvailable {
                         card {
                             Text("Health data isn't available on this device.")
-                                .font(.bodyFace(15))
+                                .font(.clarionBody(15))
                                 .foregroundStyle(Color.ink3)
                         }
                     } else if !healthAuthorized {
@@ -61,10 +61,10 @@ struct HomeView: View {
         card {
             VStack(alignment: .leading, spacing: Brand.s3) {
                 Text("Connect Apple Health")
-                    .font(.display(21, weight: 700))
+                    .font(.clarionDisplay(21))
                     .foregroundStyle(Color.ink)
                 Text(PersonaScopes.primerCopy(for: persona))
-                    .font(.bodyFace(15))
+                    .font(.clarionBody(15))
                     .foregroundStyle(Color.ink2)
                 Button {
                     Task { await requestHealthAccess() }
@@ -92,7 +92,7 @@ struct HomeView: View {
                     previewMetric("Sleep", "7h 20m")
                 }
                 Text("Your recovery, sleep, and training — connected to your bloodwork.")
-                    .font(.bodyFace(13))
+                    .font(.clarionBody(13))
                     .foregroundStyle(Color.ink3)
             }
         }
@@ -102,10 +102,10 @@ struct HomeView: View {
     private func previewMetric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.display(19, weight: 700))
+                .font(.clarionData(19)) // preview of working numerals — data voice, not display
                 .foregroundStyle(Color.ink3)
                 .redacted(reason: .placeholder)
-            Text(label).font(.bodyFace(12)).foregroundStyle(Color.ink3)
+            Text(label).font(.clarionBody(12)).foregroundStyle(Color.ink3)
         }
     }
 
@@ -131,12 +131,12 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: Brand.s4) {
                 HStack {
                     Text("Today")
-                        .font(.display(21, weight: 700))
+                        .font(.clarionDisplay(21))
                         .foregroundStyle(Color.ink)
                     Spacer()
                     if let last = sync.lastSyncedAt {
                         Text("synced \(last.formatted(.relative(presentation: .named)))")
-                            .font(.bodyFace(12))
+                            .font(.clarionBody(12))
                             .foregroundStyle(Color.ink3)
                     }
                 }
@@ -154,7 +154,7 @@ struct HomeView: View {
                     }
                 } else {
                     Text("Pull to sync and see today's numbers.")
-                        .font(.bodyFace(15))
+                        .font(.clarionBody(15))
                         .foregroundStyle(Color.ink3)
                 }
             }
@@ -164,10 +164,10 @@ struct HomeView: View {
     private func bigMetric(_ label: String, _ value: String?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value ?? "—")
-                .font(.data(22, weight: 600))
+                .font(.clarionData(22))
                 .foregroundStyle(Color.ink)
             Text(label)
-                .font(.bodyFace(12))
+                .font(.clarionBody(12))
                 .foregroundStyle(Color.ink3)
         }
     }
@@ -196,20 +196,20 @@ struct HomeView: View {
                         if let top {
                             Eyebrow("Focus first", color: .forest)
                             Text("\(top.statusLabel) \(top.name)")
-                                .font(.display(17, weight: 700))
+                                .font(.clarionDisplay(17))
                                 .foregroundStyle(Color.ink)
                             if let gain = ScoreEngine.improvementForecast(results, fixing: top.name) {
                                 Text("Worth +\(gain) points on your score.")
-                                    .font(.bodyFace(13.5))
+                                    .font(.clarionBody(13.5))
                                     .foregroundStyle(Color.ink2)
                             }
                         } else {
                             Eyebrow("Your report", color: .forest)
                             Text("Everything in range")
-                                .font(.display(17, weight: 700))
+                                .font(.clarionDisplay(17))
                                 .foregroundStyle(Color.ink)
                             Text("Your panel looks well-covered.")
-                                .font(.bodyFace(13.5))
+                                .font(.clarionBody(13.5))
                                 .foregroundStyle(Color.ink2)
                         }
                     }
@@ -245,7 +245,7 @@ struct HomeView: View {
                                 tab = 3
                             } label: {
                                 Text("See plan")
-                                    .font(.ui(13, weight: 600))
+                                    .font(.clarionLabel(13))
                                     .foregroundStyle(Color.forest)
                             }
                             .buttonStyle(PressableStyle())
@@ -254,12 +254,12 @@ struct HomeView: View {
                             HStack(spacing: Brand.s3) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(next.name)
-                                        .font(.display(16, weight: 700))
+                                        .font(.clarionDisplay(16))
                                         .foregroundStyle(Color.ink)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.8)
                                     Text("\(next.dose) · \(takeable.count - remaining.count) of \(takeable.count) taken today")
-                                        .font(.bodyFace(13))
+                                        .font(.clarionBody(13))
                                         .foregroundStyle(Color.ink3)
                                 }
                                 Spacer()
@@ -268,7 +268,7 @@ struct HomeView: View {
                                     Task { await log.toggle(next) }
                                 } label: {
                                     Text("Log dose")
-                                        .font(.ui(13.5, weight: 600))
+                                        .font(.clarionLabel(13.5))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 9)
@@ -284,7 +284,7 @@ struct HomeView: View {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(Color.forest)
                                 Text("All \(takeable.count) doses logged for today.")
-                                    .font(.bodyFace(14.5))
+                                    .font(.clarionBody(14.5))
                                     .foregroundStyle(Color.ink2)
                             }
                         }
@@ -304,24 +304,24 @@ struct HomeView: View {
                     Image(systemName: sync.lastSyncedAt == nil ? "arrow.triangle.2.circlepath" : "checkmark.circle")
                         .foregroundStyle(Color.forest)
                     Text(sync.lastSyncedAt == nil ? "Not synced yet" : "Everything up to date")
-                        .font(.bodyFace(14.5)).foregroundStyle(Color.ink3)
+                        .font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
                 case .syncing:
                     ProgressView().controlSize(.small)
-                    Text("Syncing…").font(.bodyFace(14.5)).foregroundStyle(Color.ink3)
+                    Text("Syncing…").font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
                 case .done(let daily, let workouts, _):
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.forest)
                     Text("Synced \(daily) days, \(workouts) workouts")
-                        .font(.bodyFace(14.5)).foregroundStyle(Color.ink3)
+                        .font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
                 case .failed(let message):
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.amber)
-                    Text(message).font(.bodyFace(14.5)).foregroundStyle(Color.ink3)
+                    Text(message).font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
                 }
                 Spacer()
                 Button("Sync") {
                     Haptics.commit()
                     Task { await sync.sync() }
                 }
-                .font(.ui(14, weight: 600))
+                .font(.clarionLabel(14))
                 .foregroundStyle(Color.forestInk)
                 .buttonStyle(PressableStyle())
                 .disabled(sync.status == .syncing)
@@ -340,7 +340,7 @@ struct HomeView: View {
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 10, weight: .semibold))
             }
-            .font(.bodyFace(13))
+            .font(.clarionBody(13))
             .foregroundStyle(Color.ink3)
         }
         .buttonStyle(PressableStyle())

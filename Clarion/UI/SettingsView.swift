@@ -18,33 +18,35 @@ struct SettingsView: View {
             Section {
                 HStack(spacing: 14) {
                     Text(initials)
-                        .font(.display(17, weight: 700))
+                        .font(.clarionDisplay(17))
                         .foregroundStyle(Color.forestInk)
                         .frame(width: 52, height: 52)
                         .background(Color.forestWash, in: Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(email.isEmpty ? "Clarion member" : email)
-                            .font(.ui(15, weight: 600))
+                            .font(.clarionLabel(15))
                             .foregroundStyle(Color.ink)
                             .lineLimit(1)
                         Text("Clarion member")
-                            .font(.bodyFace(13))
+                            .font(.clarionBody(13))
                             .foregroundStyle(Color.ink3)
                     }
                 }
                 .padding(.vertical, 4)
             }
+            .listRowBackground(Color.surface)
 
             Section {
                 Link(destination: URL(string: "x-apple-health://")!) {
                     linkRow("Manage Health permissions", system: "heart.text.square")
                 }
                 Text("Clarion only reads the metrics relevant to your goals, and never uses health data for advertising.")
-                    .font(.bodyFace(13))
+                    .font(.clarionBody(13))
                     .foregroundStyle(Color.ink3)
             } header: {
                 sectionHeader("Health data")
             }
+            .listRowBackground(Color.surface)
 
             Section {
                 Link(destination: Config.apiBase.appendingPathComponent("legal/privacy")) {
@@ -59,30 +61,34 @@ struct SettingsView: View {
             } header: {
                 sectionHeader("Privacy & legal")
             }
+            .listRowBackground(Color.surface)
 
             Section {
                 Button("Sign out") {
                     Haptics.warning()
                     auth.signOut()
                 }
-                .font(.bodyFace(16))
+                .font(.clarionBody(16))
                 .foregroundStyle(Color.ink)
             } header: {
                 sectionHeader("Account")
             }
+            .listRowBackground(Color.surface)
 
             Section {
                 Button("Delete my account", role: .destructive) {
                     Haptics.warning()
                     confirmingDelete = true
                 }
+                .foregroundStyle(Color.clay) // destructive routes through clay, never system red
                 .disabled(deleting)
                 if let deleteError {
-                    Text(deleteError).font(.footnote).foregroundStyle(.red)
+                    Text(deleteError).font(.clarionBody(13)).foregroundStyle(Color.clay)
                 }
             } footer: {
                 Text("Permanently removes your labs, wearable data, and profile from Clarion. This can't be undone.")
             }
+            .listRowBackground(Color.surface)
         }
         .scrollContentBackground(.hidden)
         .background(Color.paper.ignoresSafeArea())
@@ -112,7 +118,7 @@ struct SettingsView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(Color.forest)
                 .frame(width: 24)
-            Text(title).font(.bodyFace(16)).foregroundStyle(Color.ink)
+            Text(title).font(.clarionBody(16)).foregroundStyle(Color.ink)
             Spacer()
             Image(systemName: "arrow.up.right")
                 .font(.system(size: 12, weight: .semibold))

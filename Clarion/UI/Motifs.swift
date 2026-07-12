@@ -35,15 +35,15 @@ struct ScoreDial: View {
             VStack(spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text(score == nil ? "—" : "\(shownValue)")
-                        .font(.display(size * 0.28, weight: 700))
+                        .font(.clarionDisplay(size * 0.28))
                         .foregroundStyle(Color.ink)
                         .monospacedDigit()
                     Text("/100")
-                        .font(.data(size * 0.095, weight: 500))
+                        .font(.clarionData(size * 0.095))
                         .foregroundStyle(Color.ink3)
                 }
                 Text(label.uppercased())
-                    .font(.ui(size * 0.072, weight: 600))
+                    .font(.clarionLabel(size * 0.072))
                     .tracking(1.2)
                     .foregroundStyle(Color.forest)
             }
@@ -123,8 +123,9 @@ struct HonestRangeBar: View {
                             Capsule()
                                 .fill(
                                     LinearGradient(
+                                        // Spec charts.flagged: clay → claySoft gradient tail.
                                         colors: isFlagged && !(value >= lo && value <= hi)
-                                            ? [Color.clay.opacity(0.55), Color.clay.opacity(0.35)]
+                                            ? [Color.clay, Color.claySoft]
                                             : [Color.forestBright, Color.forest],
                                         startPoint: .leading, endPoint: .trailing
                                     )
@@ -139,7 +140,7 @@ struct HonestRangeBar: View {
                             .frame(width: 16, height: 16)
                             .overlay(Circle().stroke(tone, lineWidth: 2.5))
                             .offset(x: x(value, in: w, axis: axis) - 8)
-                            .shadow(color: Color.ink.opacity(0.12), radius: 2, y: 1)
+                            .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
                     }
                     .frame(height: 16)
 
@@ -165,7 +166,7 @@ struct HonestRangeBar: View {
                     if let lo = optimalMin { scaleLabel(lo) }
                     Spacer()
                     Text("your target")
-                        .font(.ui(9.5, weight: 600))
+                        .font(.clarionLabel(9.5))
                         .tracking(1)
                         .textCase(.uppercase)
                         .foregroundStyle(Color.forest.opacity(0.75))
@@ -175,7 +176,7 @@ struct HonestRangeBar: View {
                 if let lLo = labNormalMin, let lHi = labNormalMax,
                    lLo != optimalMin || lHi != optimalMax {
                     Text("lab calls \(fmt(lLo))–\(fmt(lHi)) “normal”")
-                        .font(.data(10, weight: 400))
+                        .font(.clarionData(10))
                         .foregroundStyle(Color.ink3)
                 }
             }
@@ -184,7 +185,7 @@ struct HonestRangeBar: View {
 
     private func scaleLabel(_ v: Double) -> some View {
         Text(fmt(v))
-            .font(.data(10.5, weight: 400))
+            .font(.clarionData(10.5))
             .foregroundStyle(Color.ink3)
     }
 
