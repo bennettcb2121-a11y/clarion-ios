@@ -52,7 +52,7 @@ enum VictoryCard: Equatable {
     /// "since March" — month of the first point; adds the year when it isn't this journey's last year.
     static func sinceLabel(firstTs: String, lastTs: String) -> String {
         guard let first = parseTimestamp(firstTs) else { return "your first draw" }
-        let cal = Calendar.current
+        let cal = LocalDay.calendar // Gregorian year in copy ("March 2026", never "March 2569")
         let fmt = DateFormatter()
         fmt.locale = Locale(identifier: "en_US_POSIX")
         fmt.dateFormat = "MMMM"
@@ -231,14 +231,16 @@ enum NextDrawCountdown: Equatable {
     case none
 
     /// Parse YYYY-MM-DD as a LOCAL midnight date (web's fromLocalIso).
+    /// GREGORIAN like the web (LocalDay.calendar) — Calendar.current would read
+    /// the server's "2026-…" as Buddhist year 2026 = Gregorian 1483.
     static func fromLocalIso(_ iso: String) -> Date? {
         let parts = iso.prefix(10).split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        return LocalDay.calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     static func toLocalIso(_ d: Date) -> String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        let c = LocalDay.calendar.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
     }
 
@@ -251,7 +253,7 @@ enum NextDrawCountdown: Equatable {
     static func computeNextRetestDate(lastDrawIso: String, retestWeeks: Double?) -> String? {
         let weeks = retestWeeks ?? 8
         guard weeks.isFinite, weeks > 0, let last = fromLocalIso(lastDrawIso) else { return nil }
-        guard let target = Calendar.current.date(byAdding: .day, value: MorningBrief.jsRound(weeks * 7), to: last) else { return nil }
+        guard let target = LocalDay.calendar.date(byAdding: .day, value: MorningBrief.jsRound(weeks * 7), to: last) else { return nil }
         return toLocalIso(target)
     }
 

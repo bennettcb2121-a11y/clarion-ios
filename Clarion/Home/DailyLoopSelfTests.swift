@@ -8,8 +8,11 @@ import Foundation
 /// victoryCard.test.ts, nextDrawCountdown.test.ts, nudgeSlot.test.ts).
 enum DailyLoopSelfTests {
 
+    @MainActor
     static func run() {
         formatters()
+        saturation()
+        dates()
         morningBrief()
         countdown()
         victory()
@@ -17,6 +20,55 @@ enum DailyLoopSelfTests {
         #if targetEnvironment(simulator)
         print("[DailyLoopSelfTests] all assertions passed")
         #endif
+    }
+
+    /// jsRound must SATURATE, never trap: the decimal pad accepts ~1e20, and
+    /// Swift's Double→Int conversion crashes beyond ±2^63 (JS Math.round doesn't).
+    private static func saturation() {
+        assert(MorningBrief.jsRound(1e20) == Int.max)
+        assert(MorningBrief.jsRound(-1e20) == Int.min)
+        assert(MorningBrief.jsRound(Double.infinity) == Int.max)
+        assert(MorningBrief.jsRound(-Double.infinity) == Int.min)
+        assert(MorningBrief.jsRound(Double.nan) == 0)
+        assert(MorningBrief.jsRound(2.5) == 3) // normal path unchanged
+
+        // clampDailyMetrics parity survives absurd input (the latent clamped() trap).
+        let huge = DailyMetrics(
+            activity_level: 1e20, sun_minutes: 1e20, hydration_cups: 1e20,
+            sleep_hours: 1e20, weight_kg: 1e20
+        ).clamped()
+        assert(huge.activity_level == 5)
+        assert(huge.sun_minutes == 600)
+        assert(huge.hydration_cups == 30)
+        assert(huge.sleep_hours == 16)
+        assert(huge.weight_kg == nil) // out of the 20–400 sanity band
+    }
+
+    /// Every day-key producer must be GREGORIAN regardless of the device
+    /// calendar (Buddhist writes year 2569, Japanese 0008 via Calendar.current).
+    @MainActor
+    private static func dates() {
+        assert(LocalDay.calendar.identifier == .gregorian)
+
+        // All producers agree with an independent Gregorian year — the "20xx" check.
+        let gregorianYear = String(format: "%04d", Calendar(identifier: .gregorian).component(.year, from: Date()))
+        assert(gregorianYear.hasPrefix("20"))
+        assert(LocalDay.todayIso().hasPrefix(gregorianYear))
+        assert(ProtocolLogStore.todayKey().hasPrefix(gregorianYear))
+        assert(NextDrawCountdown.toLocalIso(Date()).hasPrefix(gregorianYear))
+        assert(DailyNormalizer.dayString(Date()).hasPrefix(gregorianYear))
+
+        // Buddhist-device simulation: server "2026-…" must parse as GREGORIAN 2026.
+        // (Calendar.current on a Thai device would read it as Buddhist 2026 = 1483 CE.)
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = .current
+        let parsed = LocalDay.fromIso("2026-07-13")!
+        assert(Calendar(identifier: .gregorian).component(.year, from: parsed) == 2026)
+        assert(buddhist.component(.year, from: parsed) == 2569) // same instant, era label +543
+
+        // Round-trips through both day-math homes.
+        assert(LocalDay.toIso(parsed) == "2026-07-13")
+        assert(NextDrawCountdown.toLocalIso(NextDrawCountdown.fromLocalIso("2026-07-13")!) == "2026-07-13")
     }
 
     private static func formatters() {

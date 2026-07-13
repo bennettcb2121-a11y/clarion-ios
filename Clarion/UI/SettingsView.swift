@@ -20,6 +20,14 @@ struct SettingsView: View {
     @State private var heightInchesText = ""
     @State private var heightCmText = ""
     @State private var weightText = ""
+    // What seedDrafts last wrote — body commits fire only when the text actually
+    // changed. Focus loss alone must never PATCH: the ft/in representation is
+    // quantized (inches are 2.54 cm apart), so re-deriving cm from an untouched
+    // draft drifts ±1 cm for most stored values.
+    @State private var seededHeightFeet = ""
+    @State private var seededHeightInches = ""
+    @State private var seededHeightCm = ""
+    @State private var seededWeight = ""
     @State private var localErrors: [String: String] = [:]
 
     @State private var confirmingDelete = false
@@ -812,6 +820,10 @@ struct SettingsView: View {
         } else {
             weightText = ""
         }
+        seededHeightFeet = heightFeetText
+        seededHeightInches = heightInchesText
+        seededHeightCm = heightCmText
+        seededWeight = weightText
     }
 
     private func trimNumber(_ v: Double) -> String {
@@ -841,8 +853,13 @@ struct SettingsView: View {
                 localErrors["score_goal"] = "Enter a number from 1 to 100."
             }
         case .heightFt, .heightIn, .heightCm:
+            // No edit → no PATCH (tapping in and out must not re-derive a drifted cm).
+            guard heightFeetText != seededHeightFeet
+                || heightInchesText != seededHeightInches
+                || heightCmText != seededHeightCm else { return }
             commitHeight()
         case .weight:
+            guard weightText != seededWeight else { return }
             commitWeight()
         }
     }

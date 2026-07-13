@@ -195,9 +195,15 @@ struct WorkoutsCard: View {
     }
 
     private func prettyDate(_ iso: String) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        // Server day keys are Gregorian — parse and render them that way.
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
         guard let d = f.date(from: iso) else { return iso }
-        let out = DateFormatter(); out.dateFormat = "MMM d"
+        let out = DateFormatter()
+        out.calendar = Calendar(identifier: .gregorian)
+        out.dateFormat = "MMM d"
         return out.string(from: d)
     }
 }

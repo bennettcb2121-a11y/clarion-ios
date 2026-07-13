@@ -25,6 +25,10 @@ final class DailyMetricsStore: ObservableObject {
     @Published private(set) var saving = false
 
     private let auth: SupabaseAuth
+    /// Monotonic edit counter: each update() claims a generation, and only the
+    /// LATEST generation may touch `today` after its network round-trip. Without
+    /// it, a slow-failing earlier PUT reverts state a newer PUT already confirmed.
+    private var updateGeneration = 0
 
     init(auth: SupabaseAuth) { self.auth = auth }
 
@@ -88,13 +92,20 @@ final class DailyMetricsStore: ObservableObject {
 
     /// Patch today's metrics: optimistic locally, clamp client-side, PUT the
     /// FULL merged object (replace semantics), adopt the server's clamped echo.
-    /// On failure the optimistic patch reverts with a warning haptic.
+    /// On failure the optimistic patch reverts with a warning haptic — but only
+    /// when no NEWER update has started since (generation check), so a slow
+    /// failure can't clobber state a later concurrent edit already owns.
     func update(_ mutate: (inout DailyMetrics) -> Void) async {
         let previous = today
         var next = today
         mutate(&next)
         next = next.clamped()
         today = next
+        updateGeneration += 1
+        let generation = updateGeneration
+        // Capture the day ONCE: a PUT spanning midnight must echo into the row
+        // it was written against, not whatever day it happens to resolve on.
+        let logDate = todayIso
         saving = true
         defer { saving = false }
 
@@ -104,28 +115,29 @@ final class DailyMetricsStore: ObservableObject {
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            req.httpBody = try JSONEncoder().encode(MetricsPutRequest(logDate: todayIso, metrics: next))
+            req.httpBody = try JSONEncoder().encode(MetricsPutRequest(logDate: logDate, metrics: next))
             let (data, response) = try await URLSession.shared.data(for: req)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw URLError(.badServerResponse)
             }
             let echoed = try JSONDecoder().decode(MetricsPutResponse.self, from: data)
+            guard generation == updateGeneration else { return } // a newer edit owns `today`
             today = echoed.metrics
-            upsertHistoryRow(echoed.metrics)
+            upsertHistoryRow(echoed.metrics, logDate: logDate)
         } catch {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("UITEST") }) {
-                upsertHistoryRow(next) // demo mode: keep the optimistic value
+                upsertHistoryRow(next, logDate: logDate) // demo mode: keep the optimistic value
                 return
             }
             #endif
+            guard generation == updateGeneration else { return } // stale failure — don't revert newer state
             today = previous
             Haptics.warning()
         }
     }
 
-    private func upsertHistoryRow(_ metrics: DailyMetrics) {
-        let iso = todayIso
+    private func upsertHistoryRow(_ metrics: DailyMetrics, logDate iso: String) {
         if let idx = history.firstIndex(where: { $0.logDate == iso }) {
             history[idx].metrics = metrics
         } else {

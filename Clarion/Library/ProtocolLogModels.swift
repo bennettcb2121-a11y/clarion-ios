@@ -141,9 +141,20 @@ struct LabSessionMarker: Codable {
 
 enum LocalDay {
 
+    /// The web's day math is implicitly GREGORIAN (JS getFullYear/getMonth), so all
+    /// log_date keys must be too. Calendar.current follows the device setting —
+    /// Buddhist (Thailand default) writes year 2569, Japanese writes 0008, and both
+    /// misread the server's Gregorian dates coming back. Pin the identifier; keep
+    /// the user's time zone so "today" is still the local wall-clock day.
+    static var calendar: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone.current
+        return cal
+    }
+
     /// YYYY-MM-DD from a Date using LOCAL time (web toLocalIso).
     static func toIso(_ d: Date) -> String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        let c = calendar.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
@@ -151,11 +162,11 @@ enum LocalDay {
     static func fromIso(_ iso: String) -> Date? {
         let parts = iso.prefix(10).split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     static func addDays(_ d: Date, _ n: Int) -> Date {
-        Calendar.current.date(byAdding: .day, value: n, to: d) ?? d
+        calendar.date(byAdding: .day, value: n, to: d) ?? d
     }
 
     static func todayIso(_ now: Date = Date()) -> String { toIso(now) }
@@ -223,15 +234,15 @@ struct LogbookMonth {
 enum LogbookGrid {
 
     static func firstOfMonth(_ d: Date) -> Date {
-        let c = Calendar.current.dateComponents([.year, .month], from: d)
-        return Calendar.current.date(from: c) ?? d
+        let c = LocalDay.calendar.dateComponents([.year, .month], from: d)
+        return LocalDay.calendar.date(from: c) ?? d
     }
 
     /// Query range for the 42-cell grid: walk back to the Sunday on/before the
     /// 1st, then +41 days (web monthGridRange).
     static func monthGridRange(_ monthDate: Date) -> (startIso: String, endIso: String) {
         let first = firstOfMonth(monthDate)
-        let sundayOffset = Calendar.current.component(.weekday, from: first) - 1 // Sunday = 1
+        let sundayOffset = LocalDay.calendar.component(.weekday, from: first) - 1 // Sunday = 1
         let gridStart = LocalDay.addDays(first, -sundayOffset)
         let gridEnd = LocalDay.addDays(gridStart, 41)
         return (LocalDay.toIso(gridStart), LocalDay.toIso(gridEnd))
@@ -247,9 +258,9 @@ enum LogbookGrid {
         nextRetestIso: String?
     ) -> LogbookMonth {
         let first = firstOfMonth(monthDate)
-        let sundayOffset = Calendar.current.component(.weekday, from: first) - 1
+        let sundayOffset = LocalDay.calendar.component(.weekday, from: first) - 1
         let gridStart = LocalDay.addDays(first, -sundayOffset)
-        let monthIndex = Calendar.current.component(.month, from: monthDate)
+        let monthIndex = LocalDay.calendar.component(.month, from: monthDate)
 
         var byDate: [String: ProtocolLogRow] = [:]
         for r in rows { byDate[r.logDate] = r }
@@ -269,8 +280,8 @@ enum LogbookGrid {
             let checks = row?.checks ?? [:]
             days.append(LogbookDay(
                 isoDate: iso,
-                dayOfMonth: Calendar.current.component(.day, from: d),
-                inMonth: Calendar.current.component(.month, from: d) == monthIndex,
+                dayOfMonth: LocalDay.calendar.component(.day, from: d),
+                inMonth: LocalDay.calendar.component(.month, from: d) == monthIndex,
                 isToday: iso == todayIso,
                 isFuture: iso > todayIso,
                 checksCompleted: checks.values.filter { $0 }.count,
@@ -283,6 +294,7 @@ enum LogbookGrid {
         }
 
         let fmt = DateFormatter()
+        fmt.calendar = LocalDay.calendar // keep the printed year Gregorian, matching the grid
         fmt.dateFormat = "LLLL yyyy"
         return LogbookMonth(monthStart: first, label: fmt.string(from: monthDate), days: days)
     }

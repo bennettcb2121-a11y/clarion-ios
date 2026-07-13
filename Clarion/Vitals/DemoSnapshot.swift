@@ -4,9 +4,12 @@ import Foundation
 /// the web's demo-fallback philosophy). Clearly flagged isDemo so the UI labels it "Sample data".
 enum DemoSnapshot {
     static func endurance() -> SnapshotResponse {
-        let cal = Calendar.current
+        let cal = LocalDay.calendar // Gregorian day keys, like every real snapshot
         let today = Date()
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .gregorian)
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd"
 
         /// Deterministic "noise" — layered incommensurate sines read as believable biology,
         /// not the too-perfect single sine the design review flagged as obviously synthetic.

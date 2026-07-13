@@ -33,9 +33,14 @@ struct WearableSnapshot: Codable {
     /// Days since the latest real reading (0 = today). Nil when no readings at all.
     var readingAgeDays: Int? {
         guard let dateStr = latestReadingDate else { return nil }
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = .current
+        // Server day keys are Gregorian — parse them that way regardless of device calendar.
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"; f.timeZone = .current
         guard let date = f.date(from: dateStr) else { return nil }
-        return Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: date), to: Calendar.current.startOfDay(for: Date())).day
+        let cal = LocalDay.calendar
+        return cal.dateComponents([.day], from: cal.startOfDay(for: date), to: cal.startOfDay(for: Date())).day
     }
 
     /// True when the newest real reading is old enough that showing it as "current" would

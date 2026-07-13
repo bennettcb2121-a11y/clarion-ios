@@ -81,7 +81,16 @@ struct MorningBrief: Equatable {
     }
 
     /// JS Math.round — half always rounds UP (toward +∞), unlike Swift's away-from-zero.
-    static func jsRound(_ x: Double) -> Int { Int((x + 0.5).rounded(.down)) }
+    /// SATURATING, because JS Math.round never throws but Swift's Double→Int
+    /// conversion traps beyond ±2^63 (a held-down 9 on the decimal pad reaches
+    /// 1e20). Out-of-range clamps to Int.max/min; NaN rounds to 0.
+    static func jsRound(_ x: Double) -> Int {
+        let r = (x + 0.5).rounded(.down)
+        if r.isNaN { return 0 }
+        if r >= 9_223_372_036_854_775_808.0 { return Int.max } // 2^63 == Double(Int.max) rounded up
+        if r <= -9_223_372_036_854_775_808.0 { return Int.min } // -2^63 == Double(Int.min)
+        return Int(r)
+    }
 
     static func fmtSleep(_ min: Double) -> String {
         let h = Int(floor(min / 60))

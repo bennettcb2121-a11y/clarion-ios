@@ -23,12 +23,10 @@ final class ProtocolLogStore: ObservableObject {
     init(auth: SupabaseAuth) { self.auth = auth }
 
     /// User-local YYYY-MM-DD, matching the web's log_date convention.
+    /// Delegates to LocalDay so the key is always GREGORIAN — a formatter on
+    /// Calendar.current writes log_date year 2569 on Buddhist-calendar devices.
     static func todayKey(_ date: Date = Date()) -> String {
-        let f = DateFormatter()
-        f.calendar = Calendar.current
-        f.timeZone = .current
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: date)
+        LocalDay.toIso(date)
     }
 
     /// True when this stack row is checked today (canonical or legacy name key).
@@ -72,7 +70,7 @@ final class ProtocolLogStore: ObservableObject {
         var byDate = recentDays
         byDate[Self.todayKey()] = todayComplete
         var streak = 0
-        let cal = Calendar.current
+        let cal = LocalDay.calendar
         for i in 0..<14 {
             guard let day = cal.date(byAdding: .day, value: -i, to: Date()) else { break }
             if byDate[Self.todayKey(day)] == true { streak += 1 } else { break }

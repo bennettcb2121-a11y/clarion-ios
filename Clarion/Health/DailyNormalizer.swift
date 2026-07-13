@@ -8,6 +8,11 @@ import HealthKit
 enum DailyNormalizer {
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
+        // Wire keys are GREGORIAN + ASCII digits: an unpinned formatter follows the
+        // device calendar/locale (Buddhist year 2569, localized digits) and corrupts
+        // the ingest payload's date field.
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = .current
         return f

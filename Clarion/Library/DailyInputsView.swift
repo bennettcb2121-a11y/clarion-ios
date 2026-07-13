@@ -310,6 +310,9 @@ struct DailyInputsView: View {
     }
 
     /// The web's commitDraft clamps: sleep ≤24h, sun ≤600 min, hydration ≤30 cups.
+    /// Clamp the RAW Double before any rounding — the decimal pad accepts values
+    /// like 1e20 that would otherwise blow past integer range (jsRound saturates
+    /// too, as a second line of defense).
     private func commitDraft() {
         defer { editing = nil; draftFocused = false }
         guard let field = editing, field != .training else { return }
@@ -318,9 +321,9 @@ struct DailyInputsView: View {
         case .sleep:
             Task { await store.update { $0.sleep_hours = Swift.min(24, num) } }
         case .sun:
-            Task { await store.update { $0.sun_minutes = Double(Swift.min(600, MorningBrief.jsRound(num))) } }
+            Task { await store.update { $0.sun_minutes = Double(MorningBrief.jsRound(Swift.min(600, num))) } }
         case .hydration:
-            Task { await store.update { $0.hydration_cups = Double(Swift.min(30, MorningBrief.jsRound(num))) } }
+            Task { await store.update { $0.hydration_cups = Double(MorningBrief.jsRound(Swift.min(30, num))) } }
         case .training:
             break
         }
