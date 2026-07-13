@@ -12,6 +12,12 @@ final class ProtocolLogStore: ObservableObject {
     @Published private(set) var checks: [String: Bool] = [:]
     @Published private(set) var loaded = false
 
+    /// Recent days (local YYYY-MM-DD → any dose checked that day) — the streak +
+    /// re-engage inputs the web reads from getProtocolLogHistory(14).
+    @Published private(set) var recentDays: [String: Bool] = [:]
+    /// Newest log_date on file (any row counts, like the web's lastLogDate memo).
+    @Published private(set) var lastLogDate: String?
+
     private let auth: SupabaseAuth
 
     init(auth: SupabaseAuth) { self.auth = auth }
@@ -36,7 +42,65 @@ final class ProtocolLogStore: ObservableObject {
         if let fresh = try? await fetchTodayChecks() {
             checks = fresh
         }
+        if let rows = try? await fetchRecentRows() {
+            var byDate: [String: Bool] = [:]
+            for row in rows {
+                byDate[row.date] = row.checks.values.contains(true)
+            }
+            recentDays = byDate
+            lastLogDate = rows.map(\.date).max()
+        }
         loaded = true // never block the UI on the logbook
+    }
+
+    /// Whole days since the newest log row (0 = today). Mirrors the web's
+    /// daysSinceLog: floor((now − Date(log_date)) / day) with UTC-midnight parsing.
+    var daysSinceLog: Int? {
+        guard let lastLogDate else { return nil }
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let parts = lastLogDate.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let d = utc.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        else { return nil }
+        return Int(floor(Date().timeIntervalSince(d) / 86_400))
+    }
+
+    /// Consecutive logged days ending today — the web's streak loop: history days
+    /// count when ANY dose was checked; today counts only when COMPLETE.
+    func streakDays(todayComplete: Bool) -> Int {
+        var byDate = recentDays
+        byDate[Self.todayKey()] = todayComplete
+        var streak = 0
+        let cal = Calendar.current
+        for i in 0..<14 {
+            guard let day = cal.date(byAdding: .day, value: -i, to: Date()) else { break }
+            if byDate[Self.todayKey(day)] == true { streak += 1 } else { break }
+        }
+        return streak
+    }
+
+    private struct HistoryRow: Codable {
+        var log_date: String
+        var checks: [String: Bool]?
+    }
+
+    private func fetchRecentRows() async throws -> [(date: String, checks: [String: Bool])] {
+        guard let session = auth.session else { throw AuthError.noSession }
+        let token = try await auth.validAccessToken()
+        var comps = URLComponents(url: Config.supabaseURL.appendingPathComponent("rest/v1/protocol_log"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "user_id", value: "eq.\(session.userId)"),
+            URLQueryItem(name: "select", value: "log_date,checks"),
+            URLQueryItem(name: "order", value: "log_date.desc"),
+            URLQueryItem(name: "limit", value: "14"),
+        ]
+        var req = URLRequest(url: comps.url!)
+        req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let rows = (try? JSONDecoder().decode([HistoryRow].self, from: data)) ?? []
+        return rows.map { ($0.log_date, $0.checks ?? [:]) }
     }
 
     /// Toggle a dose for today. Optimistic locally; the write re-reads the server row and

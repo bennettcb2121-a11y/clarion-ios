@@ -10,6 +10,11 @@ struct ClarionApp: App {
         _auth = StateObject(wrappedValue: auth)
         _sync = StateObject(wrappedValue: SyncCoordinator(auth: auth))
         Self.applyBrandChrome()
+        #if DEBUG
+        // No test target in this project — the daily-loop logic verifies itself with
+        // an assertion block on every debug launch (a failure crashes immediately).
+        DailyLoopSelfTests.run()
+        #endif
     }
 
     /// New York serif 600 (the display role) for a UIKit context, per clarion-tokens.json.

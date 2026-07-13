@@ -12,6 +12,41 @@ struct ReportResponse: Codable {
     var results: [BiomarkerResult]?
     var stack: [StackItem]?
     var stackMonthlyCost: Double?
+    /// Panel-to-panel movement + countdown anchors — additive field; older API omits it.
+    var history: ReportHistory?
+}
+
+/// The `history` field of GET /api/report: each multi-draw marker's first + latest
+/// point evaluated under the user's CURRENT adaptive ranges (the victory card's
+/// input), plus the next-draw countdown anchors (lastDrawIso + retest_weeks).
+struct ReportHistory: Codable {
+    var panelCount: Int
+    /// YYYY-MM-DD of the most recent draw.
+    var lastDrawIso: String?
+    /// profiles.retest_weeks (nil → the app falls back to the default of 8).
+    var retestWeeks: Double?
+    var markers: [ReportHistoryMarker]
+}
+
+struct ReportHistoryMarker: Codable, Identifiable {
+    var name: String
+    var unit: String?
+    /// Total draws carrying this marker (≥2 by construction).
+    var points: Int
+    var first: ReportHistoryPoint
+    var last: ReportHistoryPoint
+
+    var id: String { name }
+}
+
+struct ReportHistoryPoint: Codable {
+    var value: Double
+    /// Sort timestamp of the draw (ISO) — enough for "since March" labels.
+    var dateIso: String
+    /// Status under the user's CURRENT personalized ranges.
+    var status: String
+    var optimalMin: Double?
+    var optimalMax: Double?
 }
 
 struct StatusCounts: Codable {

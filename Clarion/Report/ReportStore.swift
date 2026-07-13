@@ -86,7 +86,26 @@ final class ReportStore: ObservableObject {
             StackItem(name: "Magnesium glycinate", dose: "300 mg", monthlyCost: 9, recommendationType: "keep", reason: "Training support — worth keeping through your current block.", marker: nil),
             StackItem(name: "Zinc picolinate", dose: "30 mg", monthlyCost: 7, recommendationType: "consider_cut", reason: "Nothing in your labs needs it — save $7/mo.", marker: nil),
         ],
-        stackMonthlyCost: 29
+        stackMonthlyCost: 29,
+        // Two draws on file: ferritin 22 → 34 since March (the iron protocol pulling),
+        // last draw June 28 on an 8-week cadence → the countdown row renders banked days.
+        history: ReportHistory(
+            panelCount: 2,
+            lastDrawIso: "2026-06-28",
+            retestWeeks: 8,
+            markers: [
+                ReportHistoryMarker(
+                    name: "Ferritin", unit: "ng/mL", points: 2,
+                    first: ReportHistoryPoint(value: 22, dateIso: "2026-03-14T12:00:00.000Z", status: "deficient", optimalMin: 50, optimalMax: 150),
+                    last: ReportHistoryPoint(value: 34, dateIso: "2026-06-28T12:00:00.000Z", status: "low", optimalMin: 50, optimalMax: 150)
+                ),
+                ReportHistoryMarker(
+                    name: "HbA1c", unit: "%", points: 2,
+                    first: ReportHistoryPoint(value: 5.2, dateIso: "2026-03-14T12:00:00.000Z", status: "optimal", optimalMin: 4.0, optimalMax: 5.6),
+                    last: ReportHistoryPoint(value: 5.1, dateIso: "2026-06-28T12:00:00.000Z", status: "optimal", optimalMin: 4.0, optimalMax: 5.6)
+                ),
+            ]
+        )
     )
     #endif
 }
