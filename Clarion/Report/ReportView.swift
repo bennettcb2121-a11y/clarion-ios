@@ -7,6 +7,8 @@ import SwiftUI
 ///  - per-marker consult cards: verdict sentence, dual honest range bar, science drawer
 struct ReportView: View {
     @ObservedObject var store: ReportStore
+    @EnvironmentObject private var auth: SupabaseAuth
+    @State private var showChat = false
 
     var body: some View {
         NavigationStack {
@@ -25,7 +27,27 @@ struct ReportView: View {
             .contentMargins(.bottom, 96, for: .scrollContent)
             .background(Color.paper.ignoresSafeArea())
             .navigationTitle("Report")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Haptics.tap()
+                        showChat = true
+                    } label: {
+                        Image(systemName: "bubble.left.and.text.bubble.right")
+                            .foregroundStyle(Color.forest)
+                    }
+                    .accessibilityLabel("Ask Clarion")
+                }
+            }
             .refreshable { await store.load() }
+        }
+        .sheet(isPresented: $showChat) {
+            // The chat rides on THIS panel: the snapshot is rebuilt per send from the
+            // loaded report, mirroring the web's biomarker-aware assistant.
+            AskClarionSheet(auth: auth, snapshotProvider: { [store] in
+                if case .ready(let r) = store.state { return BiomarkerSnapshot.build(from: r) }
+                return nil
+            })
         }
         .task { if case .loading = store.state { await store.load() } }
     }

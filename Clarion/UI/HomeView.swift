@@ -23,6 +23,9 @@ struct HomeView: View {
     @AppStorage(HomeNudge.dismissedDayKey) private var nudgeDismissedDay = ""
     @State private var requestingAuth = false
     @State private var openingWeb = false
+    @State private var showSettings = false
+    @State private var showLibrary = false
+    @State private var showChat = false
 
     var body: some View {
         NavigationStack {
@@ -46,14 +49,38 @@ struct HomeView: View {
                             victoryCardView.entrance(3)
                             nudgeCard.entrance(4)
                             syncRow.entrance(5)
+                            libraryCard.entrance(6)
                         }
-                        webFooter.entrance(6).id("home-bottom")
+                        webFooter.entrance(7).id("home-bottom")
                     }
                     .padding(Brand.s5)
                 }
                 .contentMargins(.bottom, 96, for: .scrollContent)
                 .background(Color.paper.ignoresSafeArea())
                 .navigationTitle(greeting)
+                .toolbar {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button {
+                            Haptics.tap()
+                            showChat = true
+                        } label: {
+                            Image(systemName: "bubble.left.and.text.bubble.right")
+                                .foregroundStyle(Color.forest)
+                        }
+                        .accessibilityLabel("Ask Clarion")
+                        Button {
+                            Haptics.tap()
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                                .foregroundStyle(Color.ink2)
+                        }
+                        .accessibilityLabel("Settings")
+                    }
+                }
+                .navigationDestination(isPresented: $showSettings) {
+                    SettingsView()
+                }
                 .refreshable {
                     Haptics.touch()
                     await sync.sync()
@@ -64,15 +91,37 @@ struct HomeView: View {
                 }
                 .onAppear {
                     #if DEBUG
-                    // Screenshot harness: `UITEST_SCROLL_BOTTOM` reveals the below-fold cards.
-                    if ProcessInfo.processInfo.arguments.contains("UITEST_SCROLL_BOTTOM") {
+                    // Screenshot harness: `UITEST_SCROLL_BOTTOM` reveals the below-fold cards;
+                    // the off-tab surfaces open on their own args (new IA: settings behind the
+                    // gear, library pushed from Home, chat as a sheet).
+                    let args = ProcessInfo.processInfo.arguments
+                    if args.contains("UITEST_SCROLL_BOTTOM") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             withAnimation { proxy.scrollTo("home-bottom", anchor: .bottom) }
                         }
                     }
+                    if args.contains("UITEST_SETTINGS") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showSettings = true }
+                    } else if args.contains("UITEST_LIBRARY") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showLibrary = true }
+                    } else if args.contains("UITEST_CHAT") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showChat = true }
+                    }
                     #endif
                 }
             }
+        }
+        .sheet(isPresented: $showChat) {
+            AskClarionSheet(auth: auth, snapshotProvider: { [report] in
+                if case .ready(let r) = report.state { return BiomarkerSnapshot.build(from: r) }
+                return nil
+            })
+        }
+        // LibraryHomeView owns its own NavigationStack (five sub-surfaces), so it presents
+        // as a sheet — its inner stack gets a clean context instead of nesting inside
+        // Home's push hierarchy, and swipe-down dismisses.
+        .sheet(isPresented: $showLibrary) {
+            LibraryHomeView(auth: auth)
         }
         .task {
             if case .loading = report.state { await report.load() }
@@ -712,6 +761,38 @@ struct HomeView: View {
                 .disabled(sync.status == .syncing)
             }
         }
+    }
+
+    // MARK: - Library (quiet entry — draws, history, trends live one push away)
+
+    private var libraryCard: some View {
+        Button {
+            Haptics.tap()
+            showLibrary = true
+        } label: {
+            HStack(spacing: Brand.s3) {
+                Image(systemName: "books.vertical")
+                    .font(.system(size: 17))
+                    .foregroundStyle(Color.forest)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Library")
+                        .font(.clarionDisplay(16))
+                        .foregroundStyle(Color.ink)
+                    Text("Your draws, marker journeys, and history.")
+                        .font(.clarionBody(13))
+                        .foregroundStyle(Color.ink3)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.ink4)
+            }
+            .padding(Brand.s4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clarionCardQuiet()
+        }
+        .buttonStyle(PressableStyle(haptic: false))
     }
 
     // MARK: - The web, demoted to a quiet footer

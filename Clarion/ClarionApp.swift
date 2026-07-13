@@ -91,6 +91,9 @@ struct RootView: View {
 
     var body: some View {
         if auth.isSignedIn || uiTestVitals {
+            // Tab order (and the DEBUG `TAB=<n>` screenshot arg): 0 Home · 1 Vitals ·
+            // 2 Report · 3 Plan · 4 Shop. Settings lives behind the gear in Home's nav
+            // bar; the Library is a quiet entry card on Home.
             TabView(selection: $tab) {
                 HomeView(persona: persona, report: report, log: protocolLog, tab: $tab)
                     .tabItem { Label("Home", systemImage: "house") }.tag(0)
@@ -100,8 +103,8 @@ struct RootView: View {
                     .tabItem { Label("Report", systemImage: "drop") }.tag(2)
                 PlanView(store: report, log: protocolLog)
                     .tabItem { Label("Plan", systemImage: "pills") }.tag(3)
-                NavigationStack { SettingsView() }
-                    .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
+                ShopView(auth: auth)
+                    .tabItem { Label("Shop", systemImage: "bag") }.tag(4)
             }
             // One consistent outline weight for every tab icon — no auto-fill on selection
             // (the mixed filled/outline set was the most persistent generic element).
@@ -119,7 +122,10 @@ struct RootView: View {
             }
             .onAppear {
                 if uiTestVitals {
-                    // Optional `TAB=<n>` launch arg picks the starting tab for screenshots.
+                    // Optional `TAB=<n>` launch arg picks the starting tab for screenshots
+                    // (new order: 0 Home · 1 Vitals · 2 Report · 3 Plan · 4 Shop). The
+                    // off-tab surfaces get their own args, handled inside HomeView:
+                    // UITEST_SETTINGS / UITEST_LIBRARY (pushes) and UITEST_CHAT (sheet).
                     let tabArg = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("TAB=") }
                     tab = tabArg.flatMap { Int($0.dropFirst(4)) } ?? 1
                 }
