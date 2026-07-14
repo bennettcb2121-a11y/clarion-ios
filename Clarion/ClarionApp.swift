@@ -61,6 +61,7 @@ struct RootView: View {
     @EnvironmentObject private var sync: SyncCoordinator
     @StateObject private var report: ReportStore
     @StateObject private var protocolLog: ProtocolLogStore
+    @StateObject private var subscription: SubscriptionStore
 
     init() {
         // These stores need auth; RootView is created inside the auth-provided environment, but
@@ -68,6 +69,7 @@ struct RootView: View {
         // instances that share the same Keychain-persisted session.
         _report = StateObject(wrappedValue: ReportStore(auth: SupabaseAuth()))
         _protocolLog = StateObject(wrappedValue: ProtocolLogStore(auth: SupabaseAuth()))
+        _subscription = StateObject(wrappedValue: SubscriptionStore(auth: SupabaseAuth()))
     }
 
     /// Cached across launches so permission scoping is right before the network returns;
@@ -93,7 +95,7 @@ struct RootView: View {
         if auth.isSignedIn || uiTestVitals {
             // Tab order (and the DEBUG `TAB=<n>` screenshot arg): 0 Home · 1 Vitals ·
             // 2 Report · 3 Plan · 4 Shop. Settings lives behind the gear in Home's nav
-            // bar; the Library is a quiet entry card on Home.
+            // bar; the Library is a destination grid on Home plus a toolbar icon.
             TabView(selection: $tab) {
                 HomeView(persona: persona, report: report, log: protocolLog, tab: $tab)
                     .tabItem { Label("Home", systemImage: "house") }.tag(0)
@@ -109,12 +111,15 @@ struct RootView: View {
             // One consistent outline weight for every tab icon — no auto-fill on selection
             // (the mixed filled/outline set was the most persistent generic element).
             .environment(\.symbolVariants, .none)
+            .environmentObject(subscription)
             .tint(Color.forest)
             .onChange(of: tab) { _, _ in Haptics.selection() }
             .onChange(of: scenePhase) { _, phase in
                 // Daily-freshness guarantee: whenever the app comes to the foreground and the
                 // last sync is older than 6 hours, sync automatically — no button required.
                 guard phase == .active, auth.isSignedIn else { return }
+                // Entitlement is cheap to re-check and fails open — every foreground.
+                Task { await subscription.refresh() }
                 let last = sync.lastSyncedAt ?? .distantPast
                 if Date().timeIntervalSince(last) > 6 * 3600 {
                     Task { await sync.sync() }
@@ -132,6 +137,7 @@ struct RootView: View {
             }
             .task {
                 await refreshPersona()
+                await subscription.refresh()
                 // Re-register observers every launch — registrations don't survive relaunch.
                 HealthStore.shared.registerBackgroundSync(persona: persona) {
                     Task { await sync.sync() }

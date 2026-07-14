@@ -1,91 +1,104 @@
 import SwiftUI
 import UIKit
 
-/// The Library front door — one screen linking the five reference surfaces:
-/// Labs history, Biomarkers, Daily inputs, Logbook, and Guides. Owns their
+/// One reference surface inside the Library. Also the deep-link vocabulary: Home's
+/// destination tiles jump straight to a surface (never to the hub), with the hub
+/// kept underneath as the container — back-swipe lands on the full list.
+enum LibraryDestination: Hashable {
+    case labs, biomarkers, dailyInputs, logbook, guides, faq
+}
+
+/// The Library front door — one screen linking the six reference surfaces:
+/// Labs history, Biomarkers, Daily inputs, Logbook, Guides, and FAQ. Owns their
 /// stores (built from the injected auth, mirroring RootView's pattern) so each
 /// child loads lazily on first visit and survives navigation.
 ///
 /// Wire-up note: instantiate as `LibraryHomeView(auth: auth)` from the app
-/// chrome (a tab, a Home link, or a toolbar button) — this file deliberately
-/// does not touch ClarionApp/HomeView.
+/// chrome (a tab, a Home link, or a toolbar button); pass `deepLink:` to open
+/// with a surface already pushed (Home's grid tiles do).
 struct LibraryHomeView: View {
     private let auth: SupabaseAuth
     @StateObject private var labs: LabsHistoryStore
     @StateObject private var report: ReportStore
     @StateObject private var metrics: DailyMetricsStore
     @StateObject private var logbook: LogbookStore
+    @State private var path: [LibraryDestination]
 
-    init(auth: SupabaseAuth) {
+    init(auth: SupabaseAuth, deepLink: LibraryDestination? = nil) {
         self.auth = auth
         _labs = StateObject(wrappedValue: LabsHistoryStore(auth: auth))
         _report = StateObject(wrappedValue: ReportStore(auth: auth))
         _metrics = StateObject(wrappedValue: DailyMetricsStore(auth: auth))
         _logbook = StateObject(wrappedValue: LogbookStore(auth: auth))
+        _path = State(initialValue: deepLink.map { [$0] } ?? [])
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(spacing: Brand.s3) {
-                    row(
+                    row(.labs,
                         icon: "chart.line.uptrend.xyaxis",
                         title: "Labs history",
                         caption: "Every panel on file, and how each marker moved between draws.",
-                        index: 0
-                    ) {
-                        LabsHistoryView(store: labs, auth: auth)
-                    }
-                    row(
+                        index: 0)
+                    row(.biomarkers,
                         icon: "drop",
                         title: "Biomarkers",
                         caption: "All your markers against personalized and standard lab ranges.",
-                        index: 1
-                    ) {
-                        BiomarkersView(store: report)
-                    }
-                    row(
+                        index: 1)
+                    row(.dailyInputs,
                         icon: "sun.max",
                         title: "Daily inputs",
                         caption: "Sleep, sunlight, hydration, training — the things a wearable can't know.",
-                        index: 2
-                    ) {
-                        DailyInputsView(store: metrics)
-                    }
-                    row(
+                        index: 2)
+                    row(.logbook,
                         icon: "calendar",
                         title: "Logbook",
                         caption: "Your day-by-day record: doses, lab days, and the next retest.",
-                        index: 3
-                    ) {
-                        LogbookView(store: logbook, report: report)
-                    }
-                    row(
+                        index: 3)
+                    row(.guides,
                         icon: "book",
                         title: "Guides",
                         caption: "Short, sourced reads on moving the markers that matter.",
-                        index: 4
-                    ) {
-                        GuidesView(auth: auth)
-                    }
+                        index: 4)
+                    row(.faq,
+                        icon: "questionmark.circle",
+                        title: "FAQ & support",
+                        caption: "Quick answers, and how to reach a human when you need one.",
+                        index: 5)
                 }
                 .padding(Brand.s5)
             }
             .background(Color.paper.ignoresSafeArea())
             .navigationTitle("Library")
+            .navigationDestination(for: LibraryDestination.self) { dest in
+                destinationView(dest)
+            }
         }
     }
 
-    private func row<Destination: View>(
+    /// The shared destination builder — the hub rows and Home's deep-link tiles land here.
+    @ViewBuilder
+    private func destinationView(_ dest: LibraryDestination) -> some View {
+        switch dest {
+        case .labs: LabsHistoryView(store: labs, auth: auth)
+        case .biomarkers: BiomarkersView(store: report)
+        case .dailyInputs: DailyInputsView(store: metrics)
+        case .logbook: LogbookView(store: logbook, report: report)
+        case .guides: GuidesView(auth: auth)
+        case .faq: FAQView()
+        }
+    }
+
+    private func row(
+        _ destination: LibraryDestination,
         icon: String,
         title: String,
         caption: String,
-        index: Int,
-        @ViewBuilder destination: @escaping () -> Destination
+        index: Int
     ) -> some View {
-        NavigationLink {
-            destination()
-        } label: {
+        NavigationLink(value: destination) {
             HStack(spacing: Brand.s4) {
                 Image(systemName: icon)
                     .font(.system(size: 17, weight: .medium))

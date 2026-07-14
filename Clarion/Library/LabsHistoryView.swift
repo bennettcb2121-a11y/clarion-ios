@@ -6,6 +6,7 @@ import SwiftUI
 struct LabsHistoryView: View {
     @ObservedObject var store: LabsHistoryStore
     let auth: SupabaseAuth
+    @EnvironmentObject private var subscription: SubscriptionStore
 
     /// nil → the server-ranked first journey is featured.
     @State private var activeMarker: String? = nil
@@ -15,15 +16,21 @@ struct LabsHistoryView: View {
 
     var body: some View {
         ScrollView {
-            switch store.state {
-            case .loading:
-                ProgressView().padding(.top, 80)
-            case .empty:
-                emptyState
-            case .error(let m):
-                errorState(m)
-            case .ready(let r):
-                content(r)
+            if !subscription.entitled {
+                // Clarion+ gates the analysis surfaces (web parity) — the wall,
+                // never a purchase button. Fails open; see SubscriptionStore.
+                MembershipWall(surface: "labs history")
+            } else {
+                switch store.state {
+                case .loading:
+                    ProgressView().padding(.top, 80)
+                case .empty:
+                    emptyState
+                case .error(let m):
+                    errorState(m)
+                case .ready(let r):
+                    content(r)
+                }
             }
         }
         .background(Color.paper.ignoresSafeArea())

@@ -11,6 +11,7 @@ import SwiftUI
 /// and gets richer the moment it does.
 struct BiomarkersView: View {
     @ObservedObject var store: ReportStore
+    @EnvironmentObject private var subscription: SubscriptionStore
 
     private enum Filter: Hashable {
         case all, review, inRange
@@ -24,15 +25,21 @@ struct BiomarkersView: View {
 
     var body: some View {
         ScrollView {
-            switch store.state {
-            case .loading:
-                ProgressView().padding(.top, 80)
-            case .empty:
-                emptyState
-            case .error(let m):
-                errorState(m)
-            case .ready(let r):
-                content(r)
+            if !subscription.entitled {
+                // Clarion+ gates the analysis surfaces (web parity) — the wall,
+                // never a purchase button. Fails open; see SubscriptionStore.
+                MembershipWall(surface: "biomarker library")
+            } else {
+                switch store.state {
+                case .loading:
+                    ProgressView().padding(.top, 80)
+                case .empty:
+                    emptyState
+                case .error(let m):
+                    errorState(m)
+                case .ready(let r):
+                    content(r)
+                }
             }
         }
         .background(Color.paper.ignoresSafeArea())

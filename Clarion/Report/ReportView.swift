@@ -8,20 +8,27 @@ import SwiftUI
 struct ReportView: View {
     @ObservedObject var store: ReportStore
     @EnvironmentObject private var auth: SupabaseAuth
+    @EnvironmentObject private var subscription: SubscriptionStore
     @State private var showChat = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                switch store.state {
-                case .loading:
-                    ProgressView().padding(.top, 80)
-                case .empty:
-                    emptyState
-                case .error(let m):
-                    errorState(m)
-                case .ready(let r):
-                    content(r)
+                if !subscription.entitled {
+                    // Clarion+ gates the analysis surfaces (web parity) — the wall,
+                    // never a purchase button. Fails open; see SubscriptionStore.
+                    MembershipWall(surface: "report")
+                } else {
+                    switch store.state {
+                    case .loading:
+                        ProgressView().padding(.top, 80)
+                    case .empty:
+                        emptyState
+                    case .error(let m):
+                        errorState(m)
+                    case .ready(let r):
+                        content(r)
+                    }
                 }
             }
             .contentMargins(.bottom, 96, for: .scrollContent)

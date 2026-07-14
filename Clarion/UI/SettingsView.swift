@@ -66,6 +66,7 @@ struct SettingsView: View {
                     }
 
                     healthCard
+                    supportCard
                     privacyCard
                     accountCard
                     deleteCard.id("settings-bottom")
@@ -596,6 +597,38 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, Brand.s4)
                     .padding(.bottom, Brand.s3)
+            }
+        }
+    }
+
+    private var supportCard: some View {
+        section("Support") {
+            VStack(alignment: .leading, spacing: 0) {
+                // Settings is pushed inside Home's NavigationStack, so a plain
+                // NavigationLink lands the native FAQ (chevron, not arrow.up.right —
+                // this one stays in the app).
+                NavigationLink {
+                    FAQView()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "questionmark.circle")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.forest)
+                            .frame(width: 24)
+                        Text("FAQ & support").font(.clarionBody(16)).foregroundStyle(Color.ink)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.ink4)
+                    }
+                    .padding(.horizontal, Brand.s4)
+                    .padding(.vertical, Brand.s3)
+                }
+                .buttonStyle(PressableStyle())
+                rowDivider
+                Link(destination: URL(string: "mailto:support@clarionlabs.tech")!) {
+                    linkRow("Email support", system: "envelope")
+                }
             }
         }
     }

@@ -13,6 +13,7 @@ struct HomeView: View {
 
     @EnvironmentObject private var auth: SupabaseAuth
     @EnvironmentObject private var sync: SyncCoordinator
+    @EnvironmentObject private var subscription: SubscriptionStore
     /// Same real snapshot the Vitals tab renders — the brief never recomputes readiness.
     @StateObject private var vitals = VitalsStore(auth: SupabaseAuth())
     @AppStorage("clarion_health_authorized") private var healthAuthorized = false
@@ -24,8 +25,27 @@ struct HomeView: View {
     @State private var requestingAuth = false
     @State private var openingWeb = false
     @State private var showSettings = false
-    @State private var showLibrary = false
+    @State private var libraryRoute: LibraryRoute? = nil
     @State private var showChat = false
+
+    /// What the Library sheet opens onto: the hub (toolbar icon) or one surface
+    /// deep-linked from a Home grid tile — the hub stays underneath as the container.
+    private enum LibraryRoute: String, Identifiable {
+        case hub, labs, biomarkers, dailyInputs, logbook, guides, faq
+        var id: String { rawValue }
+
+        var deepLink: LibraryDestination? {
+            switch self {
+            case .hub: return nil
+            case .labs: return .labs
+            case .biomarkers: return .biomarkers
+            case .dailyInputs: return .dailyInputs
+            case .logbook: return .logbook
+            case .guides: return .guides
+            case .faq: return .faq
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -46,10 +66,10 @@ struct HomeView: View {
                             countdownRow.entrance(1)
                             addLabsCard.entrance(1)
                             nextDoseCard.entrance(2)
-                            victoryCardView.entrance(3)
-                            nudgeCard.entrance(4)
-                            syncRow.entrance(5)
-                            libraryCard.entrance(6)
+                            libraryGrid.entrance(3).id("home-library")
+                            victoryCardView.entrance(4)
+                            nudgeCard.entrance(5)
+                            syncRow.entrance(6)
                         }
                         webFooter.entrance(7).id("home-bottom")
                     }
@@ -68,6 +88,14 @@ struct HomeView: View {
                                 .foregroundStyle(Color.forest)
                         }
                         .accessibilityLabel("Ask Clarion")
+                        Button {
+                            Haptics.tap()
+                            libraryRoute = .hub
+                        } label: {
+                            Image(systemName: "books.vertical")
+                                .foregroundStyle(Color.ink2)
+                        }
+                        .accessibilityLabel("Library")
                         Button {
                             Haptics.tap()
                             showSettings = true
@@ -99,11 +127,17 @@ struct HomeView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             withAnimation { proxy.scrollTo("home-bottom", anchor: .bottom) }
                         }
+                    } else if args.contains("UITEST_SCROLL_LIBRARY") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation { proxy.scrollTo("home-library", anchor: .bottom) }
+                        }
                     }
                     if args.contains("UITEST_SETTINGS") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showSettings = true }
                     } else if args.contains("UITEST_LIBRARY") {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showLibrary = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { libraryRoute = .hub }
+                    } else if args.contains("UITEST_FAQ") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { libraryRoute = .faq }
                     } else if args.contains("UITEST_CHAT") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showChat = true }
                     }
@@ -117,11 +151,16 @@ struct HomeView: View {
                 return nil
             })
         }
-        // LibraryHomeView owns its own NavigationStack (five sub-surfaces), so it presents
+        // LibraryHomeView owns its own NavigationStack (six sub-surfaces), so it presents
         // as a sheet — its inner stack gets a clean context instead of nesting inside
-        // Home's push hierarchy, and swipe-down dismisses.
-        .sheet(isPresented: $showLibrary) {
-            LibraryHomeView(auth: auth)
+        // Home's push hierarchy, and swipe-down dismisses. Grid tiles deep-link straight
+        // to their surface; the hub stays underneath as the container. The environment
+        // objects are re-attached explicitly — the gated surfaces (Labs history,
+        // Biomarkers) read the entitlement, and the membership wall reads auth.
+        .sheet(item: $libraryRoute) { route in
+            LibraryHomeView(auth: auth, deepLink: route.deepLink)
+                .environmentObject(auth)
+                .environmentObject(subscription)
         }
         .task {
             if case .loading = report.state { await report.load() }
@@ -763,34 +802,48 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Library (quiet entry — draws, history, trends live one push away)
+    // MARK: - Library grid (founder feedback: the quiet row hid five surfaces —
+    // a visible 2×3 grid of destination tiles makes them discoverable at a glance)
 
-    private var libraryCard: some View {
+    private var libraryGrid: some View {
+        VStack(alignment: .leading, spacing: Brand.s2 + 2) {
+            Eyebrow("Library").padding(.horizontal, Brand.s1)
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: Brand.s3), GridItem(.flexible(), spacing: Brand.s3)],
+                spacing: Brand.s3
+            ) {
+                libraryTile("chart.line.uptrend.xyaxis", "Labs history", route: .labs)
+                libraryTile("drop", "Biomarkers", route: .biomarkers)
+                libraryTile("calendar", "Logbook", route: .logbook)
+                libraryTile("sun.max", "Daily inputs", route: .dailyInputs)
+                libraryTile("book", "Guides", route: .guides)
+                libraryTile("questionmark.circle", "FAQ", route: .faq)
+            }
+        }
+    }
+
+    private func libraryTile(_ icon: String, _ label: String, route: LibraryRoute) -> some View {
         Button {
             Haptics.tap()
-            showLibrary = true
+            libraryRoute = route
         } label: {
             HStack(spacing: Brand.s3) {
-                Image(systemName: "books.vertical")
-                    .font(.system(size: 17))
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color.forest)
-                    .frame(width: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Library")
-                        .font(.clarionDisplay(16))
-                        .foregroundStyle(Color.ink)
-                    Text("Your draws, marker journeys, and history.")
-                        .font(.clarionBody(13))
-                        .foregroundStyle(Color.ink3)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.ink4)
+                    .frame(width: 34, height: 34)
+                    .background(Color.forestWash, in: Circle())
+                Text(label)
+                    .font(.clarionDisplay(15))
+                    .tracking(-0.015 * 15)
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Spacer(minLength: 0)
             }
-            .padding(Brand.s4)
+            .padding(Brand.s3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .clarionCardQuiet()
+            .clarionCard()
         }
         .buttonStyle(PressableStyle(haptic: false))
     }

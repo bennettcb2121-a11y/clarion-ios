@@ -8,6 +8,7 @@ import SwiftUI
 struct PlanView: View {
     @ObservedObject var store: ReportStore
     @ObservedObject var log: ProtocolLogStore
+    @EnvironmentObject private var subscription: SubscriptionStore
 
     init(store: ReportStore, log: ProtocolLogStore) {
         self.store = store
@@ -17,15 +18,21 @@ struct PlanView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                switch store.state {
-                case .loading:
-                    ProgressView().padding(.top, 80)
-                case .empty:
-                    empty("Add bloodwork to get a lab-matched supplement plan.")
-                case .error(let m):
-                    empty(m)
-                case .ready(let r):
-                    content(r)
+                if !subscription.entitled {
+                    // Clarion+ gates the analysis surfaces (web parity) — the wall,
+                    // never a purchase button. Fails open; see SubscriptionStore.
+                    MembershipWall(surface: "plan")
+                } else {
+                    switch store.state {
+                    case .loading:
+                        ProgressView().padding(.top, 80)
+                    case .empty:
+                        empty("Add bloodwork to get a lab-matched supplement plan.")
+                    case .error(let m):
+                        empty(m)
+                    case .ready(let r):
+                        content(r)
+                    }
                 }
             }
             .contentMargins(.bottom, 96, for: .scrollContent)
