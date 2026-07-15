@@ -87,8 +87,8 @@ struct LibraryHomeView: View {
     @ViewBuilder
     private func destinationView(_ dest: LibraryDestination) -> some View {
         switch dest {
-        case .labs: ClarionWebSurface(auth: auth, path: "/dashboard/trends", title: "Labs history")
-        case .biomarkers: ClarionWebSurface(auth: auth, path: "/dashboard/biomarkers", title: "Biomarkers")
+        case .labs: LabsHistoryView(store: labs, auth: auth)
+        case .biomarkers: BiomarkersView(store: report)
         case .dailyInputs: DailyInputsView(store: metrics)
         case .logbook: LogbookView(store: logbook, report: report)
         case .guides: ClarionWebSurface(auth: auth, path: "/guides", title: "Guides")

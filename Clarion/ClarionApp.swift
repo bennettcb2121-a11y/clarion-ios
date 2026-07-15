@@ -155,22 +155,17 @@ struct RootView: View {
                     .tabItem { Label("Home", systemImage: "house") }.tag(0)
                 VitalsView(auth: auth)
                     .tabItem { Label("Vitals", systemImage: "waveform.path.ecg") }.tag(1)
-                // Report / Plan / Shop are the REAL signed-in web pages in a WKWebView —
-                // the native reconstructions drifted from the live site and failed to load
-                // data. Each tab supplies its own NavigationStack so the web surface (which
-                // only sets a title) gets a native nav bar. Home + Vitals stay native.
-                NavigationStack {
-                    ClarionWebSurface(auth: auth, path: "/dashboard/analysis", title: "Report")
-                }
-                .tabItem { Label("Report", systemImage: "doc.text") }.tag(2)
-                NavigationStack {
-                    ClarionWebSurface(auth: auth, path: "/dashboard/plan", title: "Plan")
-                }
-                .tabItem { Label("Plan", systemImage: "checklist") }.tag(3)
-                NavigationStack {
-                    ClarionWebSurface(auth: auth, path: "/dashboard/shop", title: "Shop")
-                }
-                .tabItem { Label("Shop", systemImage: "bag") }.tag(4)
+                // Report / Plan / Shop are NATIVE screens (each owns its NavigationStack).
+                // They read the same GET /api/report + /api/shop the webview did, but render
+                // in the app's own design — the earlier "nothing loads" was the shared-session
+                // refresh-token bug (now fixed), not the native code. A cramped webview of the
+                // dashboard isn't the product; these are.
+                ReportView(store: report)
+                    .tabItem { Label("Report", systemImage: "doc.text") }.tag(2)
+                PlanView(store: report, log: protocolLog)
+                    .tabItem { Label("Plan", systemImage: "checklist") }.tag(3)
+                ShopView(auth: auth)
+                    .tabItem { Label("Shop", systemImage: "bag") }.tag(4)
             }
             // One consistent outline weight for every tab icon — no auto-fill on selection
             // (the mixed filled/outline set was the most persistent generic element).

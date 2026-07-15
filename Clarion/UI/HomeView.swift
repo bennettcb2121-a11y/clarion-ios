@@ -30,6 +30,7 @@ struct HomeView: View {
     @State private var showCustomize = false
     @State private var typedCount = 0
     @State private var greetingStarted = false
+    @State private var didRequestHealth = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Persona-defaulted, user-overridable Home card order + visibility (persisted per user id).
     @StateObject private var layout: HomeLayoutStore
@@ -190,6 +191,14 @@ struct HomeView: View {
             if case .loading = report.state { await report.load() }
             await log.load()
             await vitals.load()
+            // Ensure HealthKit is actually requested this session. The persisted
+            // `healthAuthorized` flag can be stale (reinstall / fresh sign-in), which left
+            // reads "not determined" and Sync doing nothing. requestAuthorization is
+            // idempotent — it shows the sheet only if the user hasn't decided yet.
+            if HealthStore.isAvailable && !didRequestHealth {
+                didRequestHealth = true
+                await requestHealthAccess()
+            }
         }
         .onChange(of: tab) { _, newTab in
             // The next-step ladder's "viewed" markers — visiting the tab settles the step.
@@ -988,7 +997,9 @@ struct HomeView: View {
                 Spacer()
                 Button("Sync") {
                     Haptics.commit()
-                    Task { await sync.sync() }
+                    // Request Health access first — if it was never granted this session,
+                    // a bare sync just fails "not determined"; requesting shows the sheet.
+                    Task { await requestHealthAccess() }
                 }
                 .font(.clarionLabel(14))
                 .foregroundStyle(Color.forestInk)
