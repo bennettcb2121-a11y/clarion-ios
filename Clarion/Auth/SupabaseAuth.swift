@@ -48,6 +48,36 @@ final class SupabaseAuth: ObservableObject {
 
     var isSignedIn: Bool { session != nil }
 
+    /// First name for the greeting, decoded from the access-token JWT's `user_metadata`
+    /// (Google/Apple sign-in supply full_name / name / given_name). Falls back to the
+    /// email's local part, else nil. Synchronous — reads the in-memory session.
+    var firstName: String? {
+        if let token = session?.accessToken,
+           let name = Self.firstNameFromJWT(token) {
+            return name
+        }
+        guard let email = session?.email,
+              let local = email.split(separator: "@").first else { return nil }
+        let raw = local.split(whereSeparator: { $0 == "." || $0 == "_" || $0 == "+" }).first.map(String.init) ?? String(local)
+        return raw.isEmpty ? nil : raw.capitalized
+    }
+
+    private static func firstNameFromJWT(_ token: String) -> String? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        guard let data = Data(base64Encoded: b64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let meta = json["user_metadata"] as? [String: Any]
+        let candidates: [String] = ["given_name", "first_name", "full_name", "name"]
+            .compactMap { meta?[$0] as? String }
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard let full = candidates.first else { return nil }
+        let first = full.split(separator: " ").first.map(String.init) ?? full
+        return first.capitalized
+    }
+
     // MARK: - Flows
 
     func signIn(email: String, password: String) async throws {

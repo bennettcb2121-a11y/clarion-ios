@@ -36,6 +36,9 @@ enum DemoSnapshot {
             d.activeEnergyKcal = (720 + w * 230).rounded()
             d.readinessScore = min(97, max(45, (82 + w * 9).rounded()))
             d.vo2Max = (56 + Double(13 - i) * 0.05 + w * 0.2).rounded(toPlaces: 1)
+            // Overnight wrist-temperature deviation from baseline — the menopause flagship signal
+            // (small +/- °C swings). Present in the sample so the persona-adaptive Home can show it.
+            d.skinTempDeviationC = (0.1 + w2 * 0.22).rounded(toPlaces: 2)
             d.provider = "demo"
             daily.append(d)
         }

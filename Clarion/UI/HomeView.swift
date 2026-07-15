@@ -27,6 +27,23 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var libraryRoute: LibraryRoute? = nil
     @State private var showChat = false
+    @State private var showCustomize = false
+    @State private var typedCount = 0
+    @State private var greetingStarted = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Persona-defaulted, user-overridable Home card order + visibility (persisted per user id).
+    @StateObject private var layout: HomeLayoutStore
+
+    init(persona: Persona, report: ReportStore, log: ProtocolLogStore, tab: Binding<Int>) {
+        self.persona = persona
+        self._report = ObservedObject(wrappedValue: report)
+        self._log = ObservedObject(wrappedValue: log)
+        self._tab = tab
+        // A fresh SupabaseAuth reads the Keychain-persisted session synchronously (same trick
+        // RootView uses to build its stores), so the layout key is user-scoped from the first frame.
+        let userId = SupabaseAuth().session?.userId
+        self._layout = StateObject(wrappedValue: HomeLayoutStore(persona: persona, userId: userId))
+    }
 
     /// What the Library sheet opens onto: the hub (toolbar icon) or one surface
     /// deep-linked from a Home grid tile — the hub stays underneath as the container.
@@ -62,22 +79,24 @@ struct HomeView: View {
                             connectCard.entrance(0)
                             previewSkeleton.entrance(1)
                         } else {
-                            heroCard.entrance(0)
-                            countdownRow.entrance(1)
+                            // The Brief is the fixed star — eyebrow + one large insight sentence.
+                            briefHero.entrance(0)
                             addLabsCard.entrance(1)
-                            nextDoseCard.entrance(2)
-                            libraryGrid.entrance(3).id("home-library")
-                            victoryCardView.entrance(4)
-                            nudgeCard.entrance(5)
-                            syncRow.entrance(6)
+                            // Everything below reorders / hides per the persona default + user override.
+                            ForEach(Array(layout.order.enumerated()), id: \.element) { i, card in
+                                customCard(card).entrance(2 + i)
+                            }
+                            customizeFooter.entrance(2 + layout.order.count)
+                            syncRow.entrance(3 + layout.order.count)
                         }
-                        webFooter.entrance(7).id("home-bottom")
+                        webFooter.entrance(9).id("home-bottom")
                     }
                     .padding(Brand.s5)
                 }
                 .contentMargins(.bottom, 96, for: .scrollContent)
                 .background(Color.paper.ignoresSafeArea())
-                .navigationTitle(greeting)
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button {
@@ -140,6 +159,8 @@ struct HomeView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { libraryRoute = .faq }
                     } else if args.contains("UITEST_CHAT") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showChat = true }
+                    } else if args.contains("UITEST_HOME_CUSTOMIZE") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showCustomize = true }
                     }
                     #endif
                 }
@@ -161,6 +182,9 @@ struct HomeView: View {
             LibraryHomeView(auth: auth, deepLink: route.deepLink)
                 .environmentObject(auth)
                 .environmentObject(subscription)
+        }
+        .sheet(isPresented: $showCustomize) {
+            HomeCustomizeSheet(store: layout)
         }
         .task {
             if case .loading = report.state { await report.load() }
@@ -352,79 +376,251 @@ struct HomeView: View {
         requestingAuth = false
     }
 
-    // MARK: - Hero (readiness + the ONE daily insight; score dial rides along, quietly)
+    // MARK: - The Brief (the fixed hero: eyebrow + ONE large insight sentence, no competing dial)
 
-    private var heroCard: some View {
-        card {
-            HStack(alignment: .top, spacing: Brand.s4) {
-                VStack(alignment: .leading, spacing: Brand.s3) {
-                    if brief.wearableDay, let readiness = brief.readiness {
-                        HStack(alignment: .firstTextBaseline, spacing: Brand.s2) {
-                            Text("\(readiness)")
-                                .font(.clarionDisplay(42))
-                                .tracking(-0.015 * 42)
-                                .foregroundStyle(Color.ink)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Eyebrow("Readiness")
-                                if let word = brief.readinessWord {
-                                    Text(word)
-                                        .font(.clarionBody(13))
-                                        .foregroundStyle(Color.ink2)
-                                }
-                            }
-                        }
-                        if let meta = wearableMetaLine {
-                            Text(meta)
-                                .font(.clarionData(13))
-                                .foregroundStyle(Color.ink3)
-                        }
-                    }
-                    if let insight = brief.insight {
-                        Text(insight.text)
-                            .font(.clarionBody(15))
-                            .foregroundStyle(Color.ink2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let line = brief.protocolLine {
-                        Text(line)
-                            .font(.clarionBody(13))
-                            .foregroundStyle(Color.ink3)
-                    }
-                    if !brief.wearableDay && brief.insight == nil && brief.protocolLine == nil {
-                        Text("Pull to sync and see today's numbers.")
-                            .font(.clarionBody(15))
-                            .foregroundStyle(Color.ink3)
-                    }
+    /// Layout A — masthead + ring. The greeting is the largest thing on the screen and
+    /// TYPES IN on appear; the readiness ring + status verdict sit beneath it, secondary.
+    private var briefHero: some View {
+        VStack(alignment: .leading, spacing: Brand.s3) {
+            Text(dateEyebrow)
+                .font(.clarionLabel(11))
+                .tracking(0.14 * 11)
+                .foregroundStyle(Color.ink3)
+
+            // The masthead. Fraunces, biggest, types in with a caret.
+            Text(displayedGreeting)
+                .font(.clarionDisplay(31))
+                .tracking(-0.02 * 31)
+                .foregroundStyle(Color.ink)
+                .lineSpacing(1)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(fullGreeting)
+
+            // Readiness ring + status verdict — one calm unit, clearly below the welcome.
+            HStack(spacing: Brand.s4) {
+                if let readiness = heroReadiness {
+                    heroRing(readiness)
                 }
-                Spacer(minLength: 0)
-                if let results = reportData?.results, !results.isEmpty {
-                    let score = ScoreEngine.score(results)
-                    Button {
-                        Haptics.tap()
-                        tab = 2
-                    } label: {
-                        ScoreDial(score: score, label: ScoreEngine.label(for: score), size: 76)
-                    }
-                    .buttonStyle(PressableStyle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(HomeStatus.word(readiness: heroReadiness, persona: persona))
+                        .font(.clarionDisplay(19))
+                        .tracking(-0.015 * 19)
+                        .foregroundStyle(Color.ink)
+                    Text(readinessCaption)
+                        .font(.clarionLabel(10))
+                        .tracking(0.13 * 10)
+                        .foregroundStyle(Color.ink3)
+                }
+            }
+            .padding(.top, Brand.s1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, Brand.s1)
+        .onAppear { startGreetingType() }
+    }
+
+    /// A compact readiness ring with the figure inside — the score's real treatment.
+    private func heroRing(_ value: Int) -> some View {
+        ZStack {
+            Circle().stroke(Color.forest.opacity(0.16), lineWidth: 5.5)
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(value, 0), 100)) / 100)
+                .stroke(Color.forest, style: StrokeStyle(lineWidth: 5.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(value)")
+                .font(.clarionData(22))
+                .foregroundStyle(Color.ink)
+        }
+        .frame(width: 66, height: 66)
+    }
+
+    /// "READINESS · FULLY CHARGED" — the tier phrase mirrors the status word's band.
+    private var readinessCaption: String {
+        guard let r = heroReadiness else { return "Readiness".uppercased() }
+        let tier: String
+        switch r {
+        case 80...: tier = "Fully charged"
+        case 65..<80: tier = "Well recovered"
+        case 50..<65: tier = "Take it easy"
+        default: tier = "Rest up"
+        }
+        return "Readiness · \(tier)".uppercased()
+    }
+
+    /// "WEDNESDAY, JULY 15" — Gregorian/POSIX so a non-Gregorian device calendar can't corrupt it.
+    private var dateEyebrow: String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEEE, MMMM d"
+        return f.string(from: Date()).uppercased()
+    }
+
+    /// "Good morning,\nCharlie." — time-of-day greeting + first name (demo "Charlie" under UITEST).
+    private var fullGreeting: String {
+        let name = isUITest ? "Charlie" : auth.firstName
+        if let name, !name.isEmpty { return "\(greeting),\n\(name)." }
+        return "\(greeting)."
+    }
+
+    /// The progressively-revealed greeting with a typing caret until complete.
+    private var displayedGreeting: String {
+        let shown = String(fullGreeting.prefix(typedCount))
+        return typedCount >= fullGreeting.count ? shown : shown + "\u{2009}▏"
+    }
+
+    private func startGreetingType() {
+        guard !greetingStarted else { return }
+        greetingStarted = true
+        if reduceMotion { typedCount = fullGreeting.count; return }
+        typedCount = 0
+        let total = fullGreeting.count
+        Task { @MainActor in
+            for i in 0...total {
+                typedCount = i
+                try? await Task.sleep(nanoseconds: 85_000_000)
+            }
+        }
+    }
+
+    /// The fresh readiness driving the hero word + figure. DEBUG `UITEST_READINESS=<n>` forces a
+    /// value so the screenshot harness can show every status tier without hacking the demo data.
+    private var heroReadiness: Int? {
+        #if DEBUG
+        if let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("UITEST_READINESS=") }),
+           let forced = Int(arg.dropFirst("UITEST_READINESS=".count)) {
+            return forced
+        }
+        #endif
+        return brief.readiness
+    }
+
+    /// "WEDNESDAY · READINESS" — tracked-caps eyebrow (the figure now sits beside the hero word).
+    private var eyebrowRow: some View {
+        Text(eyebrowLead)
+            .font(.clarionLabel(11.5))
+            .tracking(0.14 * 11.5)
+            .foregroundStyle(Color.ink3)
+    }
+
+    private var eyebrowLead: String {
+        heroReadiness != nil ? "\(weekday) · Readiness".uppercased() : weekday.uppercased()
+    }
+
+    /// Weekday name (Gregorian, en_US_POSIX — never the device's Buddhist calendar).
+    private var weekday: String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEEE"
+        return f.string(from: Date())
+    }
+
+    // MARK: - Customizable card dispatch (persona default order, user override wins)
+
+    @ViewBuilder
+    private func customCard(_ card: HomeCard) -> some View {
+        switch card {
+        case .metrics: metricRow
+        case .victory: victoryCardView
+        case .doses: nextDoseCard
+        case .countdown: countdownRow
+        case .nudge: nudgeCard
+        }
+    }
+
+    // MARK: - Metric chip row (persona-adaptive — which three numbers lead)
+
+    private struct HomeMetric: Identifiable {
+        let id: String
+        let value: String
+        let unit: String?
+        let caption: String
+    }
+
+    @ViewBuilder
+    private var metricRow: some View {
+        let metrics = homeMetrics
+        if !metrics.isEmpty {
+            VStack(alignment: .leading, spacing: Brand.s2 + 2) {
+                if let tuned = personaTunedLabel {
+                    Eyebrow(tuned).padding(.horizontal, Brand.s1)
+                }
+                HStack(spacing: Brand.s3) {
+                    ForEach(metrics) { metricChip($0) }
                 }
             }
         }
     }
 
-    /// Quiet working numerals for today — same source the Today card used (last sync).
-    private var wearableMetaLine: String? {
+    private func metricChip(_ m: HomeMetric) -> some View {
+        VStack(alignment: .leading, spacing: Brand.s1) {
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(m.value)
+                    .font(.clarionData(22))
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if let unit = m.unit {
+                    Text(unit)
+                        .font(.clarionBody(11))
+                        .foregroundStyle(Color.ink3)
+                }
+            }
+            Text(m.caption.uppercased())
+                .font(.clarionLabel(10))
+                .tracking(0.12 * 10)
+                .foregroundStyle(Color.ink3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Brand.s3)
+        .padding(.vertical, Brand.s3 + 1)
+        .clarionCardQuiet(cornerRadius: Brand.r)
+    }
+
+    private var personaTunedLabel: String? {
+        switch persona {
+        case .endurance: return "Tuned for endurance"
+        case .strength: return "Tuned for strength"
+        case .menopause: return "Tuned for your transition"
+        case .general: return nil
+        }
+    }
+
+    /// The three numbers to lead with, by persona — first available wins, so a persona's flagship
+    /// (VO₂max, overnight temp) leads when it's synced and gracefully falls back to the general
+    /// set otherwise. Same wearable window the brief reads; Score comes from the report.
+    private var homeMetrics: [HomeMetric] {
         let source = sync.lastSummary.isEmpty ? (briefWindow?.daily ?? []) : sync.lastSummary
-        guard let today = source.last else { return nil }
-        var parts: [String] = []
-        if let hrv = today.hrv { parts.append("HRV \(Int(hrv)) ms") }
-        if let sleep = today.sleepDurationMin { parts.append("Sleep \(formatMinutes(sleep))") }
-        if persona == .menopause, let temp = today.skinTempDeviationC {
-            parts.append(String(format: "Temp %+.2f °C", temp))
+        let today = source.last
+
+        func hrv() -> HomeMetric? {
+            today?.hrv.map { HomeMetric(id: "hrv", value: "\(Int($0))", unit: "ms", caption: "HRV") }
         }
-        if persona == .endurance, let vo2 = today.vo2Max {
-            parts.append(String(format: "VO₂max %.1f", vo2))
+        func sleep() -> HomeMetric? {
+            today?.sleepDurationMin.map { HomeMetric(id: "sleep", value: formatMinutes($0), unit: nil, caption: "Sleep") }
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        func vo2() -> HomeMetric? {
+            today?.vo2Max.map { HomeMetric(id: "vo2max", value: String(format: "%.1f", $0), unit: nil, caption: "VO₂max") }
+        }
+        func temp() -> HomeMetric? {
+            today?.skinTempDeviationC.map { HomeMetric(id: "temp", value: String(format: "%+.2f", $0), unit: "°C", caption: "Temp") }
+        }
+        func scoreMetric() -> HomeMetric? {
+            guard let results = reportData?.results, !results.isEmpty else { return nil }
+            return HomeMetric(id: "score", value: "\(ScoreEngine.score(results))", unit: nil, caption: "Score")
+        }
+
+        let candidates: [() -> HomeMetric?]
+        switch persona {
+        case .endurance: candidates = [vo2, hrv, sleep, scoreMetric]
+        case .menopause: candidates = [temp, hrv, sleep, scoreMetric]
+        case .strength, .general: candidates = [hrv, sleep, scoreMetric]
+        }
+        return Array(candidates.compactMap { $0() }.prefix(3))
     }
 
     private func formatMinutes(_ min: Double) -> String {
@@ -802,50 +998,25 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Library grid (founder feedback: the quiet row hid five surfaces —
-    // a visible 2×3 grid of destination tiles makes them discoverable at a glance)
+    // MARK: - Customize affordance (a calm footer row — the Library moved to the toolbar icon,
+    // so Home reads as a daily brief, not a launcher grid)
 
-    private var libraryGrid: some View {
-        VStack(alignment: .leading, spacing: Brand.s2 + 2) {
-            Eyebrow("Library").padding(.horizontal, Brand.s1)
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: Brand.s3), GridItem(.flexible(), spacing: Brand.s3)],
-                spacing: Brand.s3
-            ) {
-                libraryTile("chart.line.uptrend.xyaxis", "Labs history", route: .labs)
-                libraryTile("drop", "Biomarkers", route: .biomarkers)
-                libraryTile("calendar", "Logbook", route: .logbook)
-                libraryTile("sun.max", "Daily inputs", route: .dailyInputs)
-                libraryTile("book", "Guides", route: .guides)
-                libraryTile("questionmark.circle", "FAQ", route: .faq)
-            }
-        }
-    }
-
-    private func libraryTile(_ icon: String, _ label: String, route: LibraryRoute) -> some View {
+    private var customizeFooter: some View {
         Button {
             Haptics.tap()
-            libraryRoute = route
+            showCustomize = true
         } label: {
-            HStack(spacing: Brand.s3) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color.forest)
-                    .frame(width: 34, height: 34)
-                    .background(Color.forestWash, in: Circle())
-                Text(label)
-                    .font(.clarionDisplay(15))
-                    .tracking(-0.015 * 15)
-                    .foregroundStyle(Color.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Customize home")
+                    .font(.clarionLabel(13))
             }
-            .padding(Brand.s3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .clarionCard()
+            .foregroundStyle(Color.ink3)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Brand.s2)
         }
-        .buttonStyle(PressableStyle(haptic: false))
+        .buttonStyle(PressableStyle())
     }
 
     // MARK: - The web, demoted to a quiet footer

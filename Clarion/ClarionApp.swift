@@ -9,6 +9,7 @@ struct ClarionApp: App {
         let auth = SupabaseAuth()
         _auth = StateObject(wrappedValue: auth)
         _sync = StateObject(wrappedValue: SyncCoordinator(auth: auth))
+        Fonts.registerBundled()   // must precede applyBrandChrome so nav titles get Fraunces
         Self.applyBrandChrome()
         #if DEBUG
         // No test target in this project — the daily-loop logic verifies itself with
@@ -17,15 +18,14 @@ struct ClarionApp: App {
         #endif
     }
 
-    /// New York serif 600 (the display role) for a UIKit context, per clarion-tokens.json.
-    private static func serifTitleFont(size: CGFloat) -> UIFont {
-        let base = UIFont.systemFont(ofSize: size, weight: .semibold)
-        guard let descriptor = base.fontDescriptor.withDesign(.serif) else { return base }
-        return UIFont(descriptor: descriptor, size: size)
+    /// Bundled Fraunces SemiBold (the display role) for a UIKit context — falls back to
+    /// the system serif if the face didn't register. Per clarion-tokens.json.
+    private static func serifTitleFont(size: CGFloat, weight: UIFont.Weight = .semibold) -> UIFont {
+        Fonts.display(size)
     }
 
     /// Brand the system chrome once: display-serif large titles everywhere — the biggest
-    /// glyphs on every screen should be the most Clarion.
+    /// glyphs on every screen should be the most Clarion — plus the tab bar's serif labels.
     private static func applyBrandChrome() {
         let ink = UIColor { traits in
             traits.userInterfaceStyle == .dark ? UIColor(hex: 0xF3F6F4) : UIColor(hex: 0x16201C)
@@ -45,6 +45,39 @@ struct ClarionApp: App {
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
+
+        applyTabBarChrome()
+    }
+
+    /// Tab bar, treatment B — "serif labels". The five tab titles carry the same New York serif
+    /// face as the nav titles (via `.withDesign(.serif)`), small (10pt), so even the smallest
+    /// chrome speaks in the brand voice. Selected = forest icon + forest serif label; inactive =
+    /// muted ink. Kept in sync with the `.tint(.forest)` + `symbolVariants(.none)` on the TabView.
+    private static func applyTabBarChrome() {
+        let forest = UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(hex: 0x2A8C72) : UIColor(hex: 0x1F6F5B)
+        }
+        // ink3 — the muted caption tone (dark mode is an alpha of the light-ink foreground).
+        let muted = UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(hex: 0xF3F6F4, alpha: 0.50) : UIColor(hex: 0x79827D)
+        }
+        let serif = serifTitleFont(size: 10, weight: .medium)
+
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+
+        func style(_ item: UITabBarItemAppearance) {
+            item.normal.iconColor = muted
+            item.normal.titleTextAttributes = [.font: serif, .foregroundColor: muted]
+            item.selected.iconColor = forest
+            item.selected.titleTextAttributes = [.font: serif, .foregroundColor: forest]
+        }
+        style(appearance.stackedLayoutAppearance)
+        style(appearance.inlineLayoutAppearance)
+        style(appearance.compactInlineLayoutAppearance)
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 
     var body: some Scene {
@@ -76,7 +109,17 @@ struct RootView: View {
     /// refreshed from /api/account/persona on every sign-in.
     @AppStorage("clarion_persona") private var personaRaw = Persona.general.rawValue
 
-    var persona: Persona { Persona(rawValue: personaRaw) ?? .general }
+    var persona: Persona {
+        #if DEBUG
+        // Screenshot harness: `UITEST_PERSONA=endurance|strength|menopause|general` forces the
+        // persona so Home's smart-default adaptivity can be captured without a live profile.
+        if let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("UITEST_PERSONA=") }),
+           let forced = Persona(rawValue: String(arg.dropFirst("UITEST_PERSONA=".count))) {
+            return forced
+        }
+        #endif
+        return Persona(rawValue: personaRaw) ?? .general
+    }
 
     /// DEBUG-only: launch with `UITEST_VITALS` to render the app shell (Vitals tab first) without
     /// a live session, so the dashboard can be screenshotted in the simulator (demo fallback).
@@ -119,11 +162,11 @@ struct RootView: View {
                 NavigationStack {
                     ClarionWebSurface(auth: auth, path: "/dashboard/analysis", title: "Report")
                 }
-                .tabItem { Label("Report", systemImage: "drop") }.tag(2)
+                .tabItem { Label("Report", systemImage: "doc.text") }.tag(2)
                 NavigationStack {
                     ClarionWebSurface(auth: auth, path: "/dashboard/plan", title: "Plan")
                 }
-                .tabItem { Label("Plan", systemImage: "pills") }.tag(3)
+                .tabItem { Label("Plan", systemImage: "checklist") }.tag(3)
                 NavigationStack {
                     ClarionWebSurface(auth: auth, path: "/dashboard/shop", title: "Shop")
                 }

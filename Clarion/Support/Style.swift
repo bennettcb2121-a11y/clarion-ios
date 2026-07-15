@@ -137,16 +137,16 @@ extension UIColor {
 
 extension Font {
 
-    /// Display — New York serif 600 (the iOS mapping of the web's Fraunces role).
-    /// Screen titles, product/marker names, hero numbers. Pair with a tracking of
-    /// about -0.015em (`-0.015 * size`) on large sizes.
+    /// Display — bundled Fraunces SemiBold (the web's display serif, exact parity),
+    /// falling back to the system serif if the face failed to register. Screen titles,
+    /// product/marker names, hero numbers. Tracking ~-0.015em on large sizes.
     static func clarionDisplay(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .semibold, design: .serif)
+        Font(Fonts.display(size))
     }
 
     /// Display italic — the web softens phrases with `em`; one coaching sentence per screen, max.
     static func clarionDisplayItalic(_ size: CGFloat) -> Font {
-        Font.system(size: size, weight: .regular, design: .serif).italic()
+        Font(Fonts.display(size, italic: true))
     }
 
     /// Data — SF Pro 600 with monospaced digits. EVERY working numeral: values,

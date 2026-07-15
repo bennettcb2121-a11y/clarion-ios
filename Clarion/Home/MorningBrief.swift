@@ -27,6 +27,16 @@ struct MorningBrief: Equatable {
     struct Insight: Equatable {
         var id: String
         var text: String
+        /// iOS presentation hint (no web twin): the data clause to emphasize in forest when the
+        /// brief is rendered as the Home hero. Must be a verbatim substring of `text`. Additive —
+        /// nil is fine (the hero then emphasizes nothing). Follow-up: mirror on the web brief.
+        var highlight: String?
+
+        init(id: String, text: String, highlight: String? = nil) {
+            self.id = id
+            self.text = text
+            self.highlight = highlight
+        }
     }
 
     struct ProtocolState: Equatable {
@@ -233,12 +243,14 @@ struct MorningBrief: Equatable {
                 if stackHas(input.stackNames, "iron") {
                     cross.append(Insight(
                         id: "iron-low-hrv-falling-treated",
-                        text: "Your HRV is down \(pct)% while ferritin sits at \(v) — low iron is the likeliest anchor on your recovery, and it's the one you're already treating."
+                        text: "Your HRV is down \(pct)% while ferritin sits at \(v) — low iron is the likeliest anchor on your recovery, and it's the one you're already treating.",
+                        highlight: "ferritin sits at \(v)"
                     ))
                 } else {
                     cross.append(Insight(
                         id: "iron-low-hrv-falling",
-                        text: "Your HRV is down \(pct)% while ferritin sits at \(v) — low iron stores suppress recovery, and yours are flagged. Worth treating before you blame training."
+                        text: "Your HRV is down \(pct)% while ferritin sits at \(v) — low iron stores suppress recovery, and yours are flagged. Worth treating before you blame training.",
+                        highlight: "ferritin sits at \(v)"
                     ))
                 }
             }
@@ -247,7 +259,8 @@ struct MorningBrief: Equatable {
             if let ferritin, ferritin.status.lowercased() == "optimal", hrv?.direction == "falling" {
                 cross.append(Insight(
                     id: "iron-clear-hrv-falling",
-                    text: "Your HRV is trending low while ferritin sits at \(fmtValue(ferritin.value)) — recovery is the lever here, not iron."
+                    text: "Your HRV is trending low while ferritin sits at \(fmtValue(ferritin.value)) — recovery is the lever here, not iron.",
+                    highlight: "ferritin sits at \(fmtValue(ferritin.value))"
                 ))
             }
 
@@ -255,7 +268,8 @@ struct MorningBrief: Equatable {
             if let rhr, rhr.direction == "rising", let m = flagged.first {
                 cross.append(Insight(
                     id: "rhr-rising-marker-flagged",
-                    text: "Resting heart rate is up \(abs(jsRound(rhr.changePct)))% and \(m.name) is still \(statusWord(m.status)) at \(fmtValue(m.value)) — treat easy days as part of the protocol until both settle."
+                    text: "Resting heart rate is up \(abs(jsRound(rhr.changePct)))% and \(m.name) is still \(statusWord(m.status)) at \(fmtValue(m.value)) — treat easy days as part of the protocol until both settle.",
+                    highlight: "\(m.name) is still \(statusWord(m.status)) at \(fmtValue(m.value))"
                 ))
             }
 
@@ -265,7 +279,8 @@ struct MorningBrief: Equatable {
                avgSleep < 420 || sleepTrend?.direction == "falling" {
                 cross.append(Insight(
                     id: "sleep-short-magnesium",
-                    text: "Sleep is averaging \(fmtSleep(avgSleep)) over the last week — the magnesium in your stack does its best work when lights-out is consistent."
+                    text: "Sleep is averaging \(fmtSleep(avgSleep)) over the last week — the magnesium in your stack does its best work when lights-out is consistent.",
+                    highlight: "averaging \(fmtSleep(avgSleep))"
                 ))
             }
 
@@ -275,12 +290,14 @@ struct MorningBrief: Equatable {
                 if isLowish(ferritin) {
                     cross.append(Insight(
                         id: "load-iron-thin",
-                        text: "\(sessions) sessions this week on a ferritin of \(v) — that training load spends iron you don't have spare. Easy days count double right now."
+                        text: "\(sessions) sessions this week on a ferritin of \(v) — that training load spends iron you don't have spare. Easy days count double right now.",
+                        highlight: "ferritin of \(v)"
                     ))
                 } else if ferritin.status.lowercased() == "optimal" {
                     cross.append(Insight(
                         id: "load-iron-holding",
-                        text: "\(sessions) sessions this week and ferritin is holding at \(v) — your iron buffer is doing its job under this load."
+                        text: "\(sessions) sessions this week and ferritin is holding at \(v) — your iron buffer is doing its job under this load.",
+                        highlight: "ferritin is holding at \(v)"
                     ))
                 }
             }
@@ -289,7 +306,8 @@ struct MorningBrief: Equatable {
             if let vitD, isLowish(vitD), let readinessTrend, readinessTrend.recentMean < 70 {
                 cross.append(Insight(
                     id: "vitd-low-readiness-flat",
-                    text: "Readiness has been sitting under 70 and your vitamin D is \(fmtValue(vitD.value)) — repletion is cheap, and it tends to show up in both numbers."
+                    text: "Readiness has been sitting under 70 and your vitamin D is \(fmtValue(vitD.value)) — repletion is cheap, and it tends to show up in both numbers.",
+                    highlight: "vitamin D is \(fmtValue(vitD.value))"
                 ))
             }
 
@@ -297,13 +315,15 @@ struct MorningBrief: Equatable {
             if let readiness, readiness >= 80 {
                 wearableOnly.append(Insight(
                     id: "readiness-high",
-                    text: "Readiness \(readiness) — your body has signed off on a hard session. Spend it."
+                    text: "Readiness \(readiness) — your body has signed off on a hard session. Spend it.",
+                    highlight: "Readiness \(readiness)"
                 ))
             }
             if let readiness, readiness < 50 {
                 wearableOnly.append(Insight(
                     id: "readiness-low",
-                    text: "Readiness \(readiness) — pushing hard today digs the hole deeper. Easy movement, real food, an early night."
+                    text: "Readiness \(readiness) — pushing hard today digs the hole deeper. Easy movement, real food, an early night.",
+                    highlight: "Readiness \(readiness)"
                 ))
             }
         }
@@ -320,7 +340,8 @@ struct MorningBrief: Equatable {
             }
             bloodOnly.append(Insight(
                 id: "flagged-target",
-                text: "\(target.name) is at \(fmtValue(target.value)) — target \(band). Every logged dose this week is a pull in that direction."
+                text: "\(target.name) is at \(fmtValue(target.value)) — target \(band). Every logged dose this week is a pull in that direction.",
+                highlight: "\(target.name) is at \(fmtValue(target.value))"
             ))
         }
 
@@ -328,7 +349,8 @@ struct MorningBrief: Equatable {
         if input.protocolState.streakDays >= 3 {
             bloodOnly.append(Insight(
                 id: "streak-proof",
-                text: "\(input.protocolState.streakDays) days logged in a row — the retest is where that streak becomes numbers."
+                text: "\(input.protocolState.streakDays) days logged in a row — the retest is where that streak becomes numbers.",
+                highlight: "\(input.protocolState.streakDays) days logged in a row"
             ))
         }
 
@@ -337,7 +359,8 @@ struct MorningBrief: Equatable {
             let left = input.protocolState.total - input.protocolState.done
             bloodOnly.append(Insight(
                 id: "doses-open",
-                text: "\(left) of \(input.protocolState.total) doses still open today — the plan only works on the days it happens."
+                text: "\(left) of \(input.protocolState.total) doses still open today — the plan only works on the days it happens.",
+                highlight: "\(left) of \(input.protocolState.total) doses still open today"
             ))
         }
 
@@ -345,7 +368,8 @@ struct MorningBrief: Equatable {
         if !input.markers.isEmpty, flagged.isEmpty {
             bloodOnly.append(Insight(
                 id: "all-clear",
-                text: "All \(input.markers.count) markers in range — today's job is to not break what's working."
+                text: "All \(input.markers.count) markers in range — today's job is to not break what's working.",
+                highlight: "All \(input.markers.count) markers in range"
             ))
         }
 
