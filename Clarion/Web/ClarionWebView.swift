@@ -132,8 +132,12 @@ struct ClarionWebView: UIViewRepresentable {
 
         /// True while the magic-link (mint) navigation is in flight.
         private var isBootstrapping = false
-        /// One mint per user-initiated load cycle — the loop guard.
+        /// Mints per user-initiated load cycle — the loop guard. The first mint may
+        /// legitimately bounce (clock skew, transient Supabase hiccup), so we allow
+        /// ONE automatic retry; after that we surface the native error state rather
+        /// than minting forever.
         private var mintAttempts = 0
+        private static let maxMintAttempts = 2
 
         init(path: String, auth: SupabaseAuth, controller: ClarionWebController) {
             self.path = path
@@ -177,17 +181,30 @@ struct ClarionWebView: UIViewRepresentable {
         }
 
         /// Mint a one-time signed-in URL (sets the Supabase cookie), then land on the
-        /// embed target. On any failure we still load the embed directly — the web
-        /// shows its own login/paywall inside the frame, which is the honest fallback.
+        /// embed target. The mint ALWAYS targets `bootstrapPath` — Supabase only
+        /// honors redirect targets on its URL-configuration allowlist, and
+        /// /dashboard/vitals is the one path proven allowlisted (the HomeView footer
+        /// flow has always used it). Minting the surface's own path risks a Supabase
+        /// redirect rejection that strands the webview on an error page.
+        ///
+        /// If the mint API itself is unavailable (no session / request failed) we
+        /// load the embed directly — the web shows its own login/paywall inside the
+        /// frame, which is the honest fallback.
         @MainActor
         private func bootstrap() {
-            guard mintAttempts == 0 else { loadEmbed(); return }
+            guard mintAttempts < Self.maxMintAttempts else {
+                // Both mints bounced — show the native error state (Try again re-runs
+                // load()) instead of stranding on Supabase's error/login page.
+                isBootstrapping = false
+                controller.phase = .failed
+                return
+            }
             mintAttempts += 1
             isBootstrapping = true
             controller.phase = .loading
             Task { @MainActor in
                 guard let token = try? await auth.validAccessToken(),
-                      let url = try? await ClarionAPI.dashboardLoginLink(path: Self.mintPath(for: path), accessToken: token)
+                      let url = try? await ClarionAPI.dashboardLoginLink(path: Self.bootstrapPath, accessToken: token)
                 else {
                     // No session (or mint failed) — just show the embed; the site handles auth.
                     isBootstrapping = false
@@ -202,7 +219,9 @@ struct ClarionWebView: UIViewRepresentable {
 
         @objc func handleRefresh() {
             // Reload the current page; an expired cookie will bounce to /login and the
-            // KVO hook re-mints. endRefreshing happens in didFinish/didFail.
+            // didFinish/KVO hooks re-mint. A pull is a fresh user-initiated load cycle,
+            // so reset the mint budget. endRefreshing happens in didFinish/didFail.
+            mintAttempts = 0
             webView?.reload()
         }
 
@@ -231,20 +250,46 @@ struct ClarionWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             webView.scrollView.refreshControl?.endRefreshing()
-            let landedOnLogin = (webView.url?.path.hasPrefix("/login") ?? false)
+            let finalURL = webView.url
 
             if isBootstrapping {
-                // The magic-link navigation completed and the session cookie is now set.
+                // The magic-link navigation (mint → Supabase verify → 302 back to
+                // clarionlabs.tech/dashboard/vitals) has finished. Check where it
+                // actually landed before trusting the cookie.
                 isBootstrapping = false
-                ClarionWeb.sessionBootstrapped = true
-                loadEmbed()
+                if Self.bootstrapSucceeded(finalURL) {
+                    // Cookie is set. Hop onward to the real target; phase stays
+                    // .loading, so the native overlay covers the intermediate
+                    // vitals page — the webview is only revealed once the FINAL
+                    // target finishes below.
+                    ClarionWeb.sessionBootstrapped = true
+                    loadEmbed()
+                } else {
+                    // Supabase rejected the redirect (login page, #error=/?error=
+                    // fragment, or stranded on the auth host). Retry the mint once;
+                    // bootstrap() itself fails over to the native error state when
+                    // attempts are exhausted.
+                    ClarionWeb.sessionBootstrapped = false
+                    bootstrap()
+                }
                 return
             }
 
-            if landedOnLogin && mintAttempts == 0 {
-                // Cookie missing/expired on a direct embed load — mint once.
+            if finalURL?.path.hasPrefix("/login") == true, mintAttempts < Self.maxMintAttempts {
+                // Cookie missing/expired on a direct embed load — mint. (When the
+                // mint API is unavailable — signed out, offline mint — attempts are
+                // consumed without a hop and we fall through to reveal the site's
+                // own login page, the honest fallback.)
                 ClarionWeb.sessionBootstrapped = false
                 bootstrap()
+                return
+            }
+
+            // Never reveal the intermediate bootstrap hop as if it were the
+            // destination — if we somehow finished on /dashboard/vitals while this
+            // surface targets another path, keep the overlay up and hop onward.
+            if path != Self.bootstrapPath, finalURL?.path == Self.bootstrapPath {
+                loadEmbed()
                 return
             }
 
@@ -293,12 +338,28 @@ struct ClarionWebView: UIViewRepresentable {
             return comps.url ?? Config.apiBase
         }
 
-        /// The app-login-link route only mints for bare `/dashboard[/…]` paths. For
-        /// anything else (e.g. `/guides`) we mint the cheapest valid path just to set
-        /// the cookie, then navigate to the real embed target.
-        static func mintPath(for path: String) -> String {
-            let ok = path.range(of: "^/dashboard(/[a-z0-9/-]*)?$", options: [.regularExpression, .caseInsensitive]) != nil
-            return ok ? path : "/dashboard/vitals"
+        /// The ONLY path we ever mint login links for. Supabase's redirect allowlist
+        /// (Auth → URL Configuration) is the gate: /dashboard/vitals is proven
+        /// allowlisted by the long-standing HomeView footer flow, so every surface
+        /// bootstraps its cookie through it and then navigates to its real target.
+        static let bootstrapPath = "/dashboard/vitals"
+
+        /// Did a URL land somewhere that means auth failed — the web login page, or
+        /// a Supabase auth error carried in the fragment/query (#error= / ?error=)?
+        static func isAuthFailure(_ url: URL?) -> Bool {
+            guard let url else { return true }
+            if url.path.hasPrefix("/login") { return true }
+            if url.fragment?.contains("error=") == true { return true }
+            if url.query?.contains("error=") == true { return true }
+            return false
+        }
+
+        /// The bootstrap hop only counts as a success if it ended back on the
+        /// clarion host (not stranded on the Supabase auth host) with no auth error.
+        static func bootstrapSucceeded(_ url: URL?) -> Bool {
+            guard let url, let host = url.host else { return false }
+            let onClarion = host == ClarionWeb.host || host.hasSuffix(".\(ClarionWeb.host)")
+            return onClarion && !isAuthFailure(url)
         }
     }
 }
