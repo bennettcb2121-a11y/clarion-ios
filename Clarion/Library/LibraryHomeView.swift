@@ -79,14 +79,19 @@ struct LibraryHomeView: View {
     }
 
     /// The shared destination builder — the hub rows and Home's deep-link tiles land here.
+    /// The content-heavy reference surfaces (Labs history, Biomarkers, Guides) render the
+    /// REAL signed-in web pages via ClarionWebSurface — LibraryHomeView already owns the
+    /// NavigationStack, so the surface just supplies its title + back button. Daily inputs
+    /// and the Logbook stay NATIVE: they write through the native metrics/log APIs, and
+    /// their write-path must keep working. FAQ stays native (static content).
     @ViewBuilder
     private func destinationView(_ dest: LibraryDestination) -> some View {
         switch dest {
-        case .labs: LabsHistoryView(store: labs, auth: auth)
-        case .biomarkers: BiomarkersView(store: report)
+        case .labs: ClarionWebSurface(auth: auth, path: "/dashboard/trends", title: "Labs history")
+        case .biomarkers: ClarionWebSurface(auth: auth, path: "/dashboard/biomarkers", title: "Biomarkers")
         case .dailyInputs: DailyInputsView(store: metrics)
         case .logbook: LogbookView(store: logbook, report: report)
-        case .guides: GuidesView(auth: auth)
+        case .guides: ClarionWebSurface(auth: auth, path: "/guides", title: "Guides")
         case .faq: FAQView()
         }
     }

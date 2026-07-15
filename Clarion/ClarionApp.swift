@@ -88,11 +88,22 @@ struct RootView: View {
         #endif
     }
 
+    /// DEBUG-only: `UITEST_WEB` renders the app shell starting on the Report tab —
+    /// a web surface — so it can be screenshotted in the simulator. Without a real
+    /// device session it shows the web login/embed shell, which is expected.
+    private var uiTestWeb: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("UITEST_WEB")
+        #else
+        return false
+        #endif
+    }
+
     @State private var tab = 0
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        if auth.isSignedIn || uiTestVitals {
+        if auth.isSignedIn || uiTestVitals || uiTestWeb {
             // Tab order (and the DEBUG `TAB=<n>` screenshot arg): 0 Home · 1 Vitals ·
             // 2 Report · 3 Plan · 4 Shop. Settings lives behind the gear in Home's nav
             // bar; the Library is a destination grid on Home plus a toolbar icon.
@@ -101,12 +112,22 @@ struct RootView: View {
                     .tabItem { Label("Home", systemImage: "house") }.tag(0)
                 VitalsView(auth: auth)
                     .tabItem { Label("Vitals", systemImage: "waveform.path.ecg") }.tag(1)
-                ReportView(store: report)
-                    .tabItem { Label("Report", systemImage: "drop") }.tag(2)
-                PlanView(store: report, log: protocolLog)
-                    .tabItem { Label("Plan", systemImage: "pills") }.tag(3)
-                ShopView(auth: auth)
-                    .tabItem { Label("Shop", systemImage: "bag") }.tag(4)
+                // Report / Plan / Shop are the REAL signed-in web pages in a WKWebView —
+                // the native reconstructions drifted from the live site and failed to load
+                // data. Each tab supplies its own NavigationStack so the web surface (which
+                // only sets a title) gets a native nav bar. Home + Vitals stay native.
+                NavigationStack {
+                    ClarionWebSurface(auth: auth, path: "/dashboard/analysis", title: "Report")
+                }
+                .tabItem { Label("Report", systemImage: "drop") }.tag(2)
+                NavigationStack {
+                    ClarionWebSurface(auth: auth, path: "/dashboard/plan", title: "Plan")
+                }
+                .tabItem { Label("Plan", systemImage: "pills") }.tag(3)
+                NavigationStack {
+                    ClarionWebSurface(auth: auth, path: "/dashboard/shop", title: "Shop")
+                }
+                .tabItem { Label("Shop", systemImage: "bag") }.tag(4)
             }
             // One consistent outline weight for every tab icon — no auto-fill on selection
             // (the mixed filled/outline set was the most persistent generic element).
@@ -126,7 +147,11 @@ struct RootView: View {
                 }
             }
             .onAppear {
-                if uiTestVitals {
+                if uiTestWeb {
+                    // Start on the Report tab (a web surface) unless TAB= overrides.
+                    let tabArg = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("TAB=") }
+                    tab = tabArg.flatMap { Int($0.dropFirst(4)) } ?? 2
+                } else if uiTestVitals {
                     // Optional `TAB=<n>` launch arg picks the starting tab for screenshots
                     // (new order: 0 Home · 1 Vitals · 2 Report · 3 Plan · 4 Shop). The
                     // off-tab surfaces get their own args, handled inside HomeView:
