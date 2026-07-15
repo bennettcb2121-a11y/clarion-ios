@@ -6,7 +6,7 @@ struct ClarionApp: App {
     @StateObject private var sync: SyncCoordinator
 
     init() {
-        let auth = SupabaseAuth()
+        let auth = SupabaseAuth.shared
         _auth = StateObject(wrappedValue: auth)
         _sync = StateObject(wrappedValue: SyncCoordinator(auth: auth))
         Fonts.registerBundled()   // must precede applyBrandChrome so nav titles get Fraunces
@@ -98,11 +98,11 @@ struct RootView: View {
 
     init() {
         // These stores need auth; RootView is created inside the auth-provided environment, but
-        // StateObject init can't read @EnvironmentObject, so build them from fresh SupabaseAuth
-        // instances that share the same Keychain-persisted session.
-        _report = StateObject(wrappedValue: ReportStore(auth: SupabaseAuth()))
-        _protocolLog = StateObject(wrappedValue: ProtocolLogStore(auth: SupabaseAuth()))
-        _subscription = StateObject(wrappedValue: SubscriptionStore(auth: SupabaseAuth()))
+        // StateObject init can't read @EnvironmentObject, so they take SupabaseAuth.shared — the
+        // ONE session instance (never a fresh SupabaseAuth, which would race on token rotation).
+        _report = StateObject(wrappedValue: ReportStore(auth: SupabaseAuth.shared))
+        _protocolLog = StateObject(wrappedValue: ProtocolLogStore(auth: SupabaseAuth.shared))
+        _subscription = StateObject(wrappedValue: SubscriptionStore(auth: SupabaseAuth.shared))
     }
 
     /// Cached across launches so permission scoping is right before the network returns;

@@ -35,11 +35,18 @@ enum AuthError: LocalizedError {
 
 @MainActor
 final class SupabaseAuth: ObservableObject {
+    /// THE session. Every store/view MUST use this one instance — never `SupabaseAuth()`.
+    /// Supabase rotates the refresh token on each refresh, so multiple instances (each with
+    /// its own in-memory copy of the session) race: one refreshes and rotates the token,
+    /// the others are left holding a now-invalid one → "Invalid Refresh Token: Refresh
+    /// Token Not Found", which kills every authed call. One shared instance = no race.
+    static let shared = SupabaseAuth()
+
     @Published private(set) var session: SupabaseSession?
 
     private static let keychainKey = "supabase_session_v1"
 
-    init() {
+    private init() {
         if let data = Keychain.get(Self.keychainKey),
            let stored = try? JSONDecoder().decode(SupabaseSession.self, from: data) {
             session = stored
@@ -90,12 +97,26 @@ final class SupabaseAuth: ObservableObject {
     func validAccessToken() async throws -> String {
         guard let current = session else { throw AuthError.noSession }
         if !current.isExpiringSoon { return current.accessToken }
-        let refreshed = try await tokenRequest(
-            grantType: "refresh_token",
-            body: ["refresh_token": current.refreshToken]
-        )
-        persist(refreshed)
-        return refreshed.accessToken
+        return try await refreshSession(current).accessToken
+    }
+
+    /// Refresh + persist. If GoTrue REJECTS the refresh token (expired, or rotated away by
+    /// another call — now impossible with the shared instance, but a truly stale one can
+    /// still happen), the session is unrecoverable: sign out so the app drops to the
+    /// sign-in screen instead of stranding on "Invalid Refresh Token". A network failure is
+    /// transient and must NOT sign the user out.
+    private func refreshSession(_ current: SupabaseSession) async throws -> SupabaseSession {
+        do {
+            let refreshed = try await tokenRequest(
+                grantType: "refresh_token",
+                body: ["refresh_token": current.refreshToken]
+            )
+            persist(refreshed)
+            return refreshed
+        } catch let error {
+            if case AuthError.badCredentials = error { signOut() }
+            throw error
+        }
     }
 
     /// Returns BOTH current tokens, refreshing first if the access token is near expiry
@@ -106,11 +127,7 @@ final class SupabaseAuth: ObservableObject {
     func validSessionTokens() async throws -> (access: String, refresh: String) {
         guard let current = session else { throw AuthError.noSession }
         if !current.isExpiringSoon { return (current.accessToken, current.refreshToken) }
-        let refreshed = try await tokenRequest(
-            grantType: "refresh_token",
-            body: ["refresh_token": current.refreshToken]
-        )
-        persist(refreshed)
+        let refreshed = try await refreshSession(current)
         return (refreshed.accessToken, refreshed.refreshToken)
     }
 

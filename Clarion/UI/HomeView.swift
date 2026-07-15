@@ -15,7 +15,7 @@ struct HomeView: View {
     @EnvironmentObject private var sync: SyncCoordinator
     @EnvironmentObject private var subscription: SubscriptionStore
     /// Same real snapshot the Vitals tab renders — the brief never recomputes readiness.
-    @StateObject private var vitals = VitalsStore(auth: SupabaseAuth())
+    @StateObject private var vitals = VitalsStore(auth: SupabaseAuth.shared)
     @AppStorage("clarion_health_authorized") private var healthAuthorized = false
     /// "Viewed" markers for the nudge slot's next-step ladder (web: HOME_*_VIEWED_KEY).
     @AppStorage("clarion_home_report_viewed") private var reportViewed = false
@@ -39,9 +39,9 @@ struct HomeView: View {
         self._report = ObservedObject(wrappedValue: report)
         self._log = ObservedObject(wrappedValue: log)
         self._tab = tab
-        // A fresh SupabaseAuth reads the Keychain-persisted session synchronously (same trick
-        // RootView uses to build its stores), so the layout key is user-scoped from the first frame.
-        let userId = SupabaseAuth().session?.userId
+        // The shared session reads the Keychain synchronously, so the layout key is user-scoped
+        // from the first frame.
+        let userId = SupabaseAuth.shared.session?.userId
         self._layout = StateObject(wrappedValue: HomeLayoutStore(persona: persona, userId: userId))
     }
 

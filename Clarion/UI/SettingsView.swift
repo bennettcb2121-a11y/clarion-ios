@@ -9,7 +9,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var auth: SupabaseAuth
     // Fresh SupabaseAuth shares the Keychain-persisted session (RootView pattern).
-    @StateObject private var store = SettingsStore(auth: SupabaseAuth())
+    @StateObject private var store = SettingsStore(auth: SupabaseAuth.shared)
 
     @AppStorage("clarion_units_imperial") private var unitsImperial = true
 
