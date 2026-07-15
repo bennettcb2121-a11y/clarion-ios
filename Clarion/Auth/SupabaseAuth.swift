@@ -68,6 +68,22 @@ final class SupabaseAuth: ObservableObject {
         return refreshed.accessToken
     }
 
+    /// Returns BOTH current tokens, refreshing first if the access token is near expiry
+    /// (same refresh logic as `validAccessToken()`). The web-session handoff needs the
+    /// refresh token too — the server calls `supabase.auth.setSession(access, refresh)`
+    /// to write the @supabase/ssr cookie, so a slightly-stale access token is fine but a
+    /// missing refresh token would strand the webview.
+    func validSessionTokens() async throws -> (access: String, refresh: String) {
+        guard let current = session else { throw AuthError.noSession }
+        if !current.isExpiringSoon { return (current.accessToken, current.refreshToken) }
+        let refreshed = try await tokenRequest(
+            grantType: "refresh_token",
+            body: ["refresh_token": current.refreshToken]
+        )
+        persist(refreshed)
+        return (refreshed.accessToken, refreshed.refreshToken)
+    }
+
     func signOut() {
         session = nil
         Keychain.delete(Self.keychainKey)

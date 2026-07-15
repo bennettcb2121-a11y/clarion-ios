@@ -15,28 +15,32 @@ enum ClarionWeb {
     /// The canonical host. Anything else (esp. amazon.com) is treated as external.
     static let host = "clarionlabs.tech"
 
-    /// Supabase auth host — the magic-link's FIRST hop lands here before it 302s
-    /// back to clarionlabs.tech, so it must count as "internal" for navigation
-    /// (otherwise bootstrap would be diverted to Safari and never set the cookie).
-    static let authHost = Config.supabaseURL.host ?? "supabase.co"
-
-    /// ONE persistent cookie jar for the whole process. The Supabase session cookie
-    /// set during the first surface's bootstrap therefore persists across every tab
-    /// AND across relaunches — never `.nonPersistent()`, which would force a fresh
-    /// sign-in on every surface.
+    /// ONE persistent cookie jar for the whole process. The @supabase/ssr session
+    /// cookie written by the first surface's web-session handoff therefore persists
+    /// across every tab AND across relaunches — never `.nonPersistent()`, which would
+    /// force a fresh handoff on every surface.
     static let dataStore: WKWebsiteDataStore = .default()
 
-    /// Launch-scoped hint: has any surface completed the signed-in bootstrap yet?
-    /// The cookie itself outlives the process (it lives in `dataStore`); this flag
-    /// just lets the first surface of a launch mint proactively rather than flash
-    /// the web login screen. Reset to false whenever a load lands on /login.
-    @MainActor static var sessionBootstrapped = false
+    /// Launch-scoped hint: has any surface completed the signed-in handoff yet? The
+    /// cookie itself outlives the process (it lives in `dataStore`); this flag just
+    /// lets subsequent surfaces of a launch load `path?embed=1` directly instead of
+    /// re-running the handoff. Reset to false whenever a load lands on an auth wall.
+    @MainActor static var sessionEstablished = false
+
+    /// OAuth-provider hosts that MUST never render inside the embedded webview —
+    /// Google (and Apple/Facebook) block their OAuth flow in a WKWebView, which is the
+    /// "oauth_state" dead-end the handoff exists to avoid.
+    static func isOAuthProviderHost(_ host: String?) -> Bool {
+        guard let host = host?.lowercased() else { return false }
+        return host == "accounts.google.com"
+            || host == "appleid.apple.com"
+            || host == "facebook.com" || host.hasSuffix(".facebook.com")
+    }
 
     /// Hosts we consider internal for main-frame navigation decisions.
     static func isInternalHost(_ host: String?) -> Bool {
         guard let host else { return false }
         return host == ClarionWeb.host || host.hasSuffix(".\(ClarionWeb.host)")
-            || host == authHost || host.hasSuffix(".\(authHost)")
     }
 }
 
@@ -64,7 +68,9 @@ final class ClarionWebController: ObservableObject {
 }
 
 /// The WKWebView itself. Loads `path?embed=1` (the web's chromeless embed mode) and
-/// bootstraps a signed-in session via the existing app-login-link handoff.
+/// signs the webview in via the `/api/app/web-session` header handoff: one request
+/// carrying the Supabase tokens writes the @supabase/ssr cookie and 302s onto the
+/// embed target. No magic link, no in-webview Google/Apple OAuth, no login page.
 struct ClarionWebView: UIViewRepresentable {
     let path: String
     let auth: SupabaseAuth
@@ -130,14 +136,15 @@ struct ClarionWebView: UIViewRepresentable {
         private weak var webView: WKWebView?
         private var urlObservation: NSKeyValueObservation?
 
-        /// True while the magic-link (mint) navigation is in flight.
-        private var isBootstrapping = false
-        /// Mints per user-initiated load cycle — the loop guard. The first mint may
-        /// legitimately bounce (clock skew, transient Supabase hiccup), so we allow
-        /// ONE automatic retry; after that we surface the native error state rather
-        /// than minting forever.
-        private var mintAttempts = 0
-        private static let maxMintAttempts = 2
+        /// True while the `/api/app/web-session` handoff navigation is in flight (from
+        /// firing the header request until it lands on the embed target or fails).
+        private var handoffInFlight = false
+        /// Handoffs per user-initiated load cycle — the loop guard. The first handoff
+        /// may legitimately fail (a just-expired token, a transient hiccup), so we allow
+        /// ONE automatic retry; after that we surface the native error state (whose "Try
+        /// again" re-runs the handoff) rather than looping forever.
+        private var handoffAttempts = 0
+        private static let maxHandoffAttempts = 2
 
         init(path: String, auth: SupabaseAuth, controller: ClarionWebController) {
             self.path = path
@@ -164,65 +171,82 @@ struct ClarionWebView: UIViewRepresentable {
         /// Entry point for the initial load, Retry, and (indirectly) refresh.
         @MainActor
         func load() {
-            mintAttempts = 0
-            if ClarionWeb.sessionBootstrapped {
+            handoffAttempts = 0
+            if ClarionWeb.sessionEstablished {
+                // Cookie already written this launch — load the target directly.
                 loadEmbed()
             } else {
-                bootstrap()
+                // First web surface of the launch (or after a sign-out) — establish the
+                // session cookie via the header handoff, which lands us on the target.
+                handoff()
             }
         }
 
-        /// Load the real target page in the web's chromeless embed mode.
+        /// Load the real target page in the web's chromeless embed mode (cookie already set).
         @MainActor
         private func loadEmbed() {
-            isBootstrapping = false
+            handoffInFlight = false
             controller.phase = .loading
             webView?.load(URLRequest(url: Self.embedURL(for: path)))
         }
 
-        /// Mint a one-time signed-in URL (sets the Supabase cookie), then land on the
-        /// embed target. The mint ALWAYS targets `bootstrapPath` — Supabase only
-        /// honors redirect targets on its URL-configuration allowlist, and
-        /// /dashboard/vitals is the one path proven allowlisted (the HomeView footer
-        /// flow has always used it). Minting the surface's own path risks a Supabase
-        /// redirect rejection that strands the webview on an error page.
+        /// Sign the webview in: load `GET /api/app/web-session?next=<target?embed=1>`
+        /// with the Supabase tokens as headers. The route writes the @supabase/ssr
+        /// cookie into the shared data store and 302s onto the embed target — so this
+        /// ONE request lands the webview signed-in on the destination, with no login
+        /// page and no in-webview OAuth. The native loading overlay stays up until that
+        /// final target commits (didFinish), so the 302 hop never flashes.
         ///
-        /// If the mint API itself is unavailable (no session / request failed) we
-        /// load the embed directly — the web shows its own login/paywall inside the
-        /// frame, which is the honest fallback.
+        /// If there's no device session (or the token refresh fails) we show the native
+        /// error state — NEVER the web login page.
         @MainActor
-        private func bootstrap() {
-            guard mintAttempts < Self.maxMintAttempts else {
-                // Both mints bounced — show the native error state (Try again re-runs
-                // load()) instead of stranding on Supabase's error/login page.
-                isBootstrapping = false
+        private func handoff() {
+            guard handoffAttempts < Self.maxHandoffAttempts else {
+                // Retry budget spent — surface the native error (Try again re-runs load()).
+                handoffInFlight = false
                 controller.phase = .failed
                 return
             }
-            mintAttempts += 1
-            isBootstrapping = true
+            handoffAttempts += 1
+            handoffInFlight = true
             controller.phase = .loading
             Task { @MainActor in
-                guard let token = try? await auth.validAccessToken(),
-                      let url = try? await ClarionAPI.dashboardLoginLink(path: Self.bootstrapPath, accessToken: token)
-                else {
-                    // No session (or mint failed) — just show the embed; the site handles auth.
-                    isBootstrapping = false
-                    loadEmbed()
+                guard let tokens = try? await auth.validSessionTokens() else {
+                    // No signed-in device session — can't hand off. Show the native error
+                    // rather than letting the webview render a login page.
+                    handoffInFlight = false
+                    controller.phase = .failed
                     return
                 }
-                webView?.load(URLRequest(url: url))
+                var req = URLRequest(url: Self.handoffURL(for: path))
+                req.setValue("Bearer \(tokens.access)", forHTTPHeaderField: "Authorization")
+                req.setValue(tokens.refresh, forHTTPHeaderField: "X-Refresh-Token")
+                webView?.load(req)
             }
+        }
+
+        /// Auth failure recovery, shared by the guard, didFinish, and the KVO hook:
+        /// forget the launch flag and re-run the handoff (which itself falls over to the
+        /// native error state once the retry budget is spent).
+        @MainActor
+        private func recoverFromAuthFailure() {
+            ClarionWeb.sessionEstablished = false
+            handoff()
         }
 
         // MARK: Refresh
 
         @objc func handleRefresh() {
-            // Reload the current page; an expired cookie will bounce to /login and the
-            // didFinish/KVO hooks re-mint. A pull is a fresh user-initiated load cycle,
-            // so reset the mint budget. endRefreshing happens in didFinish/didFail.
-            mintAttempts = 0
-            webView?.reload()
+            // A pull is a fresh user-initiated cycle: reset the auth-failure budget so an
+            // expired cookie can re-handoff. Reload the current page; if the cookie has
+            // expired the load will bounce toward /login, which the guard cancels and
+            // recovers via a fresh handoff. endRefreshing happens in didFinish/didFail.
+            handoffAttempts = 0
+            if ClarionWeb.sessionEstablished {
+                webView?.reload()
+            } else {
+                handoff()
+            }
         }
 
         // MARK: WKNavigationDelegate
@@ -234,6 +258,17 @@ struct ClarionWebView: UIViewRepresentable {
         ) {
             guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
             let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+
+            // HARD GUARD: the webview must NEVER render an auth wall — a login page or an
+            // OAuth provider (Google/Apple/Facebook), which is the "oauth_state" dead-end
+            // Google throws inside embedded webviews. Cancel any such main-frame nav and
+            // recover by re-running the header handoff (or the native error if spent).
+            if isMainFrame && Self.isBlockedAuthNavigation(url) {
+                decisionHandler(.cancel)
+                recoverFromAuthFailure()
+                return
+            }
+
             let isAmazonRedirect = url.path.hasPrefix("/go/amazon")
             let isExternalHost = !ClarionWeb.isInternalHost(url.host)
 
@@ -252,47 +287,33 @@ struct ClarionWebView: UIViewRepresentable {
             webView.scrollView.refreshControl?.endRefreshing()
             let finalURL = webView.url
 
-            if isBootstrapping {
-                // The magic-link navigation (mint → Supabase verify → 302 back to
-                // clarionlabs.tech/dashboard/vitals) has finished. Check where it
-                // actually landed before trusting the cookie.
-                isBootstrapping = false
-                if Self.bootstrapSucceeded(finalURL) {
-                    // Cookie is set. Hop onward to the real target; phase stays
-                    // .loading, so the native overlay covers the intermediate
-                    // vitals page — the webview is only revealed once the FINAL
-                    // target finishes below.
-                    ClarionWeb.sessionBootstrapped = true
-                    loadEmbed()
+            if handoffInFlight {
+                // The handoff navigation (web-session route → 302 → embed target) has
+                // finished. Trust the cookie only if it actually landed on a real page.
+                handoffInFlight = false
+                if Self.handoffLanded(finalURL) {
+                    ClarionWeb.sessionEstablished = true
+                    handoffAttempts = 0 // episode over — restore the budget for a later re-auth
+                    controller.phase = .loaded
                 } else {
-                    // Supabase rejected the redirect (login page, #error=/?error=
-                    // fragment, or stranded on the auth host). Retry the mint once;
-                    // bootstrap() itself fails over to the native error state when
-                    // attempts are exhausted.
-                    ClarionWeb.sessionBootstrapped = false
-                    bootstrap()
+                    // The route returned an error body (401/400 — no redirect fired) or
+                    // bounced to an auth wall. Retry the handoff once; handoff() itself
+                    // fails over to the native error state when the budget is spent. The
+                    // overlay stays up throughout, so the raw error is never revealed.
+                    recoverFromAuthFailure()
                 }
                 return
             }
 
-            if finalURL?.path.hasPrefix("/login") == true, mintAttempts < Self.maxMintAttempts {
-                // Cookie missing/expired on a direct embed load — mint. (When the
-                // mint API is unavailable — signed out, offline mint — attempts are
-                // consumed without a hop and we fall through to reveal the site's
-                // own login page, the honest fallback.)
-                ClarionWeb.sessionBootstrapped = false
-                bootstrap()
+            // A direct embed load (cookie already set this launch) that bounced to an
+            // auth wall means the cookie expired — re-handoff. (The decidePolicyFor guard
+            // catches full navigations to /login first; this is the belt-and-suspenders.)
+            if Self.isAuthFailure(finalURL) {
+                recoverFromAuthFailure()
                 return
             }
 
-            // Never reveal the intermediate bootstrap hop as if it were the
-            // destination — if we somehow finished on /dashboard/vitals while this
-            // surface targets another path, keep the overlay up and hop onward.
-            if path != Self.bootstrapPath, finalURL?.path == Self.bootstrapPath {
-                loadEmbed()
-                return
-            }
-
+            handoffAttempts = 0 // a clean load means we're healthy — restore the budget
             controller.phase = .loaded
         }
 
@@ -312,7 +333,7 @@ struct ClarionWebView: UIViewRepresentable {
             // and policy-change frame interruptions.
             if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
             if ns.domain == "WebKitErrorDomain" && ns.code == 102 { return } // frame load interrupted by policy
-            if isBootstrapping { isBootstrapping = false }
+            if handoffInFlight { handoffInFlight = false }
             controller.phase = .failed
         }
 
@@ -320,46 +341,70 @@ struct ClarionWebView: UIViewRepresentable {
 
         @MainActor
         private func handleURLChange(_ url: URL?) {
-            guard let url, url.path.hasPrefix("/login") else { return }
-            guard !isBootstrapping, mintAttempts == 0 else { return }
-            ClarionWeb.sessionBootstrapped = false
-            bootstrap()
+            // Catch client-side (Next.js router.replace) redirects to an auth wall that
+            // decidePolicyFor never sees — a same-document push doesn't hit the delegate.
+            guard let url, Self.isBlockedAuthNavigation(url) else { return }
+            guard !handoffInFlight else { return }
+            recoverFromAuthFailure()
         }
 
         private func openExternal(_ url: URL) {
             Task { @MainActor in controller.externalLink = ClarionExternalLink(url: url) }
         }
 
-        /// `https://clarionlabs.tech{path}?embed=1` — the chromeless web experience.
+        /// `https://clarionlabs.tech{path}?embed=1` — the chromeless web experience,
+        /// loaded directly once the session cookie is set for the launch.
         static func embedURL(for path: String) -> URL {
             var comps = URLComponents(url: Config.apiBase, resolvingAgainstBaseURL: false)!
-            comps.path = path
+            comps.path = path.components(separatedBy: "?").first ?? path
             comps.queryItems = [URLQueryItem(name: "embed", value: "1")]
             return comps.url ?? Config.apiBase
         }
 
-        /// The ONLY path we ever mint login links for. Supabase's redirect allowlist
-        /// (Auth → URL Configuration) is the gate: /dashboard/vitals is proven
-        /// allowlisted by the long-standing HomeView footer flow, so every surface
-        /// bootstraps its cookie through it and then navigates to its real target.
-        static let bootstrapPath = "/dashboard/vitals"
+        /// The embed-mode path (`{path}?embed=1`) used as the handoff's `next` target.
+        static func embedTargetPath(for path: String) -> String {
+            if path.contains("embed=") { return path }
+            return path.contains("?") ? "\(path)&embed=1" : "\(path)?embed=1"
+        }
 
-        /// Did a URL land somewhere that means auth failed — the web login page, or
-        /// a Supabase auth error carried in the fragment/query (#error= / ?error=)?
+        /// `https://clarionlabs.tech/api/app/web-session?next=<embed target, encoded>` —
+        /// the handoff URL. Loading it with the token headers sets the cookie and 302s to
+        /// `next`. `next` is fully percent-encoded so its own `?embed=1` can't be misread
+        /// as a second query param by the route's `searchParams.get("next")`.
+        static func handoffURL(for path: String) -> URL {
+            let next = embedTargetPath(for: path)
+            let encoded = next.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? next
+            let base = Config.apiBase.absoluteString
+            return URL(string: "\(base)/api/app/web-session?next=\(encoded)") ?? Config.apiBase
+        }
+
+        /// Would loading `url` in the main frame render an auth wall we must never show —
+        /// the web login page, our OAuth start routes, or an OAuth provider's own domain?
+        static func isBlockedAuthNavigation(_ url: URL) -> Bool {
+            if ClarionWeb.isOAuthProviderHost(url.host) { return true }
+            let path = url.path
+            if path == "/login" || path.hasPrefix("/login/") { return true }
+            if path.hasPrefix("/auth/google") || path.hasPrefix("/auth/apple") { return true }
+            return false
+        }
+
+        /// Did a URL land somewhere that means auth failed — the web login page, or an
+        /// auth error carried in the fragment/query (#error= / ?error=)?
         static func isAuthFailure(_ url: URL?) -> Bool {
             guard let url else { return true }
-            if url.path.hasPrefix("/login") { return true }
+            if isBlockedAuthNavigation(url) { return true }
             if url.fragment?.contains("error=") == true { return true }
             if url.query?.contains("error=") == true { return true }
             return false
         }
 
-        /// The bootstrap hop only counts as a success if it ended back on the
-        /// clarion host (not stranded on the Supabase auth host) with no auth error.
-        static func bootstrapSucceeded(_ url: URL?) -> Bool {
+        /// The handoff only counts as landed if it 302'd OFF the web-session route onto a
+        /// real clarion page (not stranded on the route's 401/400 JSON body) with no auth
+        /// error — proof the cookie was written.
+        static func handoffLanded(_ url: URL?) -> Bool {
             guard let url, let host = url.host else { return false }
             let onClarion = host == ClarionWeb.host || host.hasSuffix(".\(ClarionWeb.host)")
-            return onClarion && !isAuthFailure(url)
+            return onClarion && url.path != "/api/app/web-session" && !isAuthFailure(url)
         }
     }
 }
