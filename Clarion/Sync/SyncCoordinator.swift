@@ -51,6 +51,17 @@ final class SyncCoordinator: ObservableObject {
             let daily = try await DailyNormalizer.build(start: start, end: end, health: health)
             let workouts = try await WorkoutNormalizer.build(start: start, end: end, health: health)
 
+            // Reading succeeded but there's nothing on the wearable — common in the
+            // simulator, or before a watch/Oura is ever paired. Don't POST an empty
+            // payload (the ingest endpoint rejects it → looked like a sync failure) and
+            // don't alarm the user: it's "up to date", not "failed".
+            if daily.isEmpty && workouts.isEmpty {
+                lastSummary = []
+                UserDefaults.standard.set(Date(), forKey: Self.lastSyncKey)
+                status = .done(daily: 0, workouts: 0, at: Date())
+                return
+            }
+
             // Workouts cap matches the server (200/request); chunk the backfill if needed.
             var remainingWorkouts = workouts
             var postedDaily = 0
@@ -73,6 +84,9 @@ final class SyncCoordinator: ObservableObject {
             lastSummary = Array(daily.suffix(3))
             status = .done(daily: postedDaily, workouts: postedWorkouts, at: Date())
         } catch {
+            #if DEBUG
+            print("[Sync] failed — raw error: \(error) | \((error as NSError).domain)#\((error as NSError).code)")
+            #endif
             status = .failed(Self.friendlyMessage(for: error))
         }
     }

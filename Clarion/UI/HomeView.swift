@@ -88,7 +88,8 @@ struct HomeView: View {
                                 customCard(card).entrance(2 + i)
                             }
                             customizeFooter.entrance(2 + layout.order.count)
-                            syncRow.entrance(3 + layout.order.count)
+                            libraryGrid.entrance(3 + layout.order.count)
+                            syncRow.entrance(4 + layout.order.count)
                         }
                         webFooter.entrance(9).id("home-bottom")
                     }
@@ -988,7 +989,9 @@ struct HomeView: View {
                     Text("Syncing…").font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
                 case .done(let daily, let workouts, _):
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.forest)
-                    Text("Synced \(daily) days, \(workouts) workouts")
+                    Text(daily == 0 && workouts == 0
+                         ? "Up to date — no new wearable data"
+                         : "Synced \(daily) days, \(workouts) workouts")
                         .font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
                 case .failed(let message):
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.amber)
@@ -1066,5 +1069,60 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Brand.s4 + 2)
             .clarionCard()
+    }
+
+    // MARK: - Library (the six reference surfaces, surfaced on Home so they're findable —
+    // not hidden behind a toolbar glyph). A labeled section + 2-column grid; each tile
+    // deep-links straight to its surface, with the hub kept underneath (back lands on the list).
+
+    private var libraryGrid: some View {
+        VStack(alignment: .leading, spacing: Brand.s3) {
+            Text("LIBRARY")
+                .font(.clarionLabel(11.5))
+                .tracking(0.14 * 11.5)
+                .foregroundStyle(Color.ink3)
+                .padding(.leading, 2)
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: Brand.s3),
+                          GridItem(.flexible(), spacing: Brand.s3)],
+                spacing: Brand.s3
+            ) {
+                libraryTile(.labs, icon: "chart.line.uptrend.xyaxis", title: "Labs history")
+                libraryTile(.biomarkers, icon: "drop", title: "Biomarkers")
+                libraryTile(.dailyInputs, icon: "sun.max", title: "Daily inputs")
+                libraryTile(.logbook, icon: "calendar", title: "Logbook")
+                libraryTile(.guides, icon: "book", title: "Guides")
+                libraryTile(.faq, icon: "questionmark.circle", title: "FAQ & support")
+            }
+        }
+        .padding(.top, Brand.s2)
+        .id("home-library")
+    }
+
+    private func libraryTile(_ route: LibraryRoute, icon: String, title: String) -> some View {
+        Button {
+            Haptics.tap()
+            libraryRoute = route
+        } label: {
+            HStack(spacing: Brand.s3) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.forest)
+                    .frame(width: 32, height: 32)
+                    .background(Color.forestWash, in: RoundedRectangle(cornerRadius: Brand.rSM))
+                Text(title)
+                    .font(.clarionDisplay(14.5))
+                    .tracking(-0.015 * 14.5)
+                    .foregroundStyle(Color.ink)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .padding(Brand.s3 + 2)
+            .clarionCard()
+        }
+        .buttonStyle(PressableStyle())
     }
 }
