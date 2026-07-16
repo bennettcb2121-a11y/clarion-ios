@@ -694,21 +694,31 @@ struct HomeView: View {
                 }
             }
         } else if persona == .endurance || persona == .strength {
-            card {
-                HStack(spacing: Brand.s3) {
-                    Image(systemName: "figure.run")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(Color.forest)
-                        .frame(width: 40, height: 40)
-                        .background(Color.forestWash, in: RoundedRectangle(cornerRadius: Brand.rSM))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("No recent sessions").font(.clarionDisplay(16)).foregroundStyle(Color.ink)
-                        Text("Connect Apple Health to see your training here.")
-                            .font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
+            Button {
+                Haptics.tap()
+                Task { await requestHealthAccess() }
+            } label: {
+                card {
+                    HStack(spacing: Brand.s3) {
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(Color.forest)
+                            .frame(width: 40, height: 40)
+                            .background(Color.forestWash, in: RoundedRectangle(cornerRadius: Brand.rSM))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("No recent sessions").font(.clarionDisplay(16)).foregroundStyle(Color.ink)
+                            Text(requestingAuth ? "Connecting…" : "Connect Apple Health to see your training here.")
+                                .font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.ink4)
                     }
-                    Spacer(minLength: 0)
                 }
             }
+            .buttonStyle(PressableStyle())
+            .disabled(requestingAuth)
         }
     }
 
