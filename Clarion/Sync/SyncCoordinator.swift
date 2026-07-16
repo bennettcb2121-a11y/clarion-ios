@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import HealthKit
 
 /// Orchestrates a sync: window selection (90-day backfill on first run, 14-day incremental
 /// after), HealthKit reads → normalize → POST, and user-visible status. Foreground "open the
@@ -38,6 +39,10 @@ final class SyncCoordinator: ObservableObject {
 
         do {
             let token = try await auth.validAccessToken()
+            // Request Health access RIGHT BEFORE the first read. Otherwise a fresh session
+            // (or a stale "connected" flag) hits errorAuthorizationNotDetermined the instant
+            // DailyNormalizer queries. Idempotent — the sheet shows only if undecided.
+            try? await health.requestAuthorization()
             let calendar = Calendar.current
             let end = Date()
             let backfillDays = lastSyncedAt == nil ? Config.firstSyncBackfillDays : Config.incrementalSyncDays
@@ -68,7 +73,23 @@ final class SyncCoordinator: ObservableObject {
             lastSummary = Array(daily.suffix(3))
             status = .done(daily: postedDaily, workouts: postedWorkouts, at: Date())
         } catch {
-            status = .failed(error.localizedDescription)
+            status = .failed(Self.friendlyMessage(for: error))
         }
+    }
+
+    /// Turn raw HealthKit/network errors into something a person can act on — never the
+    /// bare "Authorization not determined" the user was seeing.
+    private static func friendlyMessage(for error: Error) -> String {
+        let ns = error as NSError
+        if ns.domain == HKError.errorDomain {
+            switch ns.code {
+            case HKError.Code.errorAuthorizationNotDetermined.rawValue,
+                 HKError.Code.errorAuthorizationDenied.rawValue:
+                return "Apple Health access is off — allow it in Settings › Health › Clarion, then pull to refresh."
+            default:
+                return "Couldn't read Health data. Pull to refresh."
+            }
+        }
+        return "Sync failed — check your connection and pull to refresh."
     }
 }

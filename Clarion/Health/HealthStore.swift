@@ -14,6 +14,17 @@ final class HealthStore {
         try await store.requestAuthorization(toShare: [], read: PersonaScopes.readTypes(for: persona))
     }
 
+    /// Request the UNION of every persona's read scopes. The sync path calls this right before
+    /// its first read so a fresh session can't throw errorAuthorizationNotDetermined for a type
+    /// the current persona happens not to scope. Idempotent — the sheet shows only once.
+    func requestAuthorization() async throws {
+        var all = Set<HKObjectType>()
+        for p in [Persona.endurance, .strength, .menopause, .general] {
+            all.formUnion(PersonaScopes.readTypes(for: p))
+        }
+        try await store.requestAuthorization(toShare: [], read: all)
+    }
+
     // MARK: - Day-bucketed statistics
 
     /// Sum of a cumulative quantity (steps, energy) per local day over [start, end].
