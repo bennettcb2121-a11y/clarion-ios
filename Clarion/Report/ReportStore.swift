@@ -18,6 +18,10 @@ final class ReportStore: ObservableObject {
     init(auth: SupabaseAuth) { self.auth = auth }
 
     func load() async {
+        #if DEBUG
+        // Screenshot harness: hold the loading skeleton on screen so it can be captured.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_LOADING") { return }
+        #endif
         do {
             let token = try await auth.validAccessToken()
             var req = URLRequest(url: Config.apiBase.appendingPathComponent("api/report"))
@@ -27,7 +31,16 @@ final class ReportStore: ObservableObject {
                 throw URLError(.badServerResponse)
             }
             let decoded = try JSONDecoder().decode(ReportResponse.self, from: data)
-            state = decoded.hasBloodwork ? .ready(decoded) : .empty
+            if decoded.hasBloodwork {
+                state = .ready(decoded)
+            } else if case .ready = state {
+                // A prior good report is on screen — ignore a transient empty-success
+                // (a backend blip returning hasBloodwork=false) rather than blanking the
+                // whole daily loop. A real data reset is picked up on next sign-in.
+                return
+            } else {
+                state = .empty
+            }
         } catch {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("UITEST_VITALS") {

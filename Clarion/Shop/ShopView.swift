@@ -26,7 +26,7 @@ struct ShopView: View {
             ScrollView {
                 switch store.state {
                 case .loading:
-                    ProgressView().padding(.top, 80)
+                    ClarionLoadingView()
                 case .empty:
                     empty("The shop catalog isn't available yet — check back soon.")
                 case .error(let m):

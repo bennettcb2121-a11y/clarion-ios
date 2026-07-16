@@ -25,7 +25,7 @@ struct PlanView: View {
                 } else {
                     switch store.state {
                     case .loading:
-                        ProgressView().padding(.top, 80)
+                        ClarionLoadingView()
                     case .empty:
                         empty("Add bloodwork to get a lab-matched supplement plan.")
                     case .error(let m):

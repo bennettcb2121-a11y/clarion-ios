@@ -36,8 +36,16 @@ final class VitalsStore: ObservableObject {
             }
             let decoded = try JSONDecoder().decode(SnapshotResponse.self, from: data)
             widgetKeys = decoded.widgetKeys
-            // The server already falls back to demo when nothing is synced; honor its flag.
-            state = decoded.snapshot.isDemo ? .demo(decoded) : .loaded(decoded)
+            // The server already falls back to demo when nothing is synced; honor its flag —
+            // but never downgrade a real last-good snapshot to the sample on a success that
+            // momentarily reports isDemo (a backend blip), which would drop the readiness ring.
+            if !decoded.snapshot.isDemo {
+                state = .loaded(decoded)
+            } else if case .loaded = state {
+                return
+            } else {
+                state = .demo(decoded)
+            }
         } catch {
             // Preserve real last-good vitals on a flaky reload — never swap a loaded snapshot
             // for the sample (that dropped Home's readiness to "New day." on pull-to-refresh,

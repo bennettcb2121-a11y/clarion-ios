@@ -34,6 +34,8 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Persona-defaulted, user-overridable Home card order + visibility (persisted per user id).
     @StateObject private var layout: HomeLayoutStore
+    /// Today's subjective "how are you feeling?" check-in (device-local, per user + day).
+    @StateObject private var feeling: FeelingStore
 
     init(persona: Persona, report: ReportStore, log: ProtocolLogStore, tab: Binding<Int>) {
         self.persona = persona
@@ -44,6 +46,7 @@ struct HomeView: View {
         // from the first frame.
         let userId = SupabaseAuth.shared.session?.userId
         self._layout = StateObject(wrappedValue: HomeLayoutStore(persona: persona, userId: userId))
+        self._feeling = StateObject(wrappedValue: FeelingStore(userId: userId))
     }
 
     /// What the Library sheet opens onto: the hub (toolbar icon) or one surface
@@ -413,7 +416,9 @@ struct HomeView: View {
                     heroRing(readiness)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(HomeStatus.word(readiness: heroReadiness, persona: persona))
+                    Text(readinessIsSubjective
+                         ? (feeling.word ?? HomeStatus.word(readiness: heroReadiness, persona: persona))
+                         : HomeStatus.word(readiness: heroReadiness, persona: persona))
                         .font(.clarionDisplay(19))
                         .tracking(-0.015 * 19)
                         .foregroundStyle(Color.ink)
@@ -448,6 +453,7 @@ struct HomeView: View {
     /// "READINESS · FULLY CHARGED" — the tier phrase mirrors the status word's band.
     private var readinessCaption: String {
         guard let r = heroReadiness else { return "Readiness".uppercased() }
+        if readinessIsSubjective { return "How you feel today".uppercased() }
         let tier: String
         switch r {
         case 80...: tier = "Fully charged"
@@ -503,7 +509,16 @@ struct HomeView: View {
             return forced
         }
         #endif
-        return brief.readiness
+        // Wearable-derived readiness is authoritative; when it's quiet (no fresh reading, or
+        // no wearable at all — e.g. the simulator), the self-reported check-in fills the ring
+        // so Home is never a blank "New day."
+        if let r = brief.readiness { return r }
+        return feeling.readiness
+    }
+
+    /// True when the ring is showing the self-reported check-in rather than a wearable reading.
+    private var readinessIsSubjective: Bool {
+        brief.readiness == nil && feeling.readiness != nil
     }
 
     /// "WEDNESDAY · READINESS" — tracked-caps eyebrow (the figure now sits beside the hero word).
@@ -532,7 +547,9 @@ struct HomeView: View {
     @ViewBuilder
     private func customCard(_ card: HomeCard) -> some View {
         switch card {
+        case .feeling: feelingCard
         case .metrics: metricRow
+        case .run: runCard
         case .victory: victoryCardView
         case .doses: nextDoseCard
         case .countdown: countdownRow
@@ -589,6 +606,153 @@ struct HomeView: View {
         .padding(.horizontal, Brand.s3)
         .padding(.vertical, Brand.s3 + 1)
         .clarionCardQuiet(cornerRadius: Brand.r)
+    }
+
+    // MARK: - How are you feeling? (a daily self-check — drives readiness when the wearable's quiet)
+
+    private var feelingCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: Brand.s3) {
+                HStack(spacing: Brand.s2) {
+                    Eyebrow("How are you feeling?")
+                    Spacer()
+                    if feeling.today != nil {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.forest)
+                    }
+                }
+                HStack(spacing: Brand.s2) {
+                    ForEach(FeelingStore.levels, id: \.level) { opt in
+                        feelingOption(opt.level, opt.label)
+                    }
+                }
+                if feeling.today != nil && brief.readiness == nil {
+                    Text("Feeding your readiness ring while your wearable's quiet.")
+                        .font(.clarionBody(12))
+                        .foregroundStyle(Color.ink3)
+                }
+            }
+        }
+    }
+
+    private func feelingOption(_ level: Int, _ label: String) -> some View {
+        let selected = feeling.today == level
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { feeling.set(level) }
+        } label: {
+            Text(label)
+                .font(.clarionLabel(11))
+                .foregroundStyle(selected ? Color.forestInk : Color.ink3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Brand.s2 + 2)
+                .background(
+                    RoundedRectangle(cornerRadius: Brand.rSM)
+                        .fill(selected ? Color.forestWash : Color.ink.opacity(0.045))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Brand.rSM)
+                        .stroke(selected ? Color.forest.opacity(0.45) : Color.clear, lineWidth: 1)
+                )
+        }
+        .buttonStyle(PressableStyle())
+    }
+
+    // MARK: - Recent run (the latest training session — endurance leads with it)
+
+    private var recentWorkout: WearableWorkout? {
+        (briefWindow?.workouts ?? []).max(by: { $0.date < $1.date })
+    }
+
+    @ViewBuilder
+    private var runCard: some View {
+        if let w = recentWorkout {
+            card {
+                VStack(alignment: .leading, spacing: Brand.s3) {
+                    HStack {
+                        Eyebrow(workoutKindLabel(w.type))
+                        Spacer()
+                        Text(relativeDay(w.date))
+                            .font(.clarionLabel(10)).tracking(0.1 * 10)
+                            .foregroundStyle(Color.ink3)
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        if let km = w.distanceKm {
+                            Text(String(format: "%.1f", km)).font(.clarionDisplay(28)).foregroundStyle(Color.ink)
+                            Text("km").font(.clarionBody(14)).foregroundStyle(Color.ink3)
+                        } else {
+                            Text(formatMinutes(w.durationMin)).font(.clarionDisplay(28)).foregroundStyle(Color.ink)
+                        }
+                    }
+                    HStack(spacing: Brand.s5) {
+                        runStat(formatMinutes(w.durationMin), "TIME")
+                        if let pace = w.avgPaceSecPerKm { runStat(formatPace(pace), "PACE") }
+                        if let hr = w.avgHeartRate { runStat("\(Int(hr))", "AVG HR") }
+                    }
+                }
+            }
+        } else if persona == .endurance || persona == .strength {
+            card {
+                HStack(spacing: Brand.s3) {
+                    Image(systemName: "figure.run")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.forest)
+                        .frame(width: 40, height: 40)
+                        .background(Color.forestWash, in: RoundedRectangle(cornerRadius: Brand.rSM))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No recent sessions").font(.clarionDisplay(16)).foregroundStyle(Color.ink)
+                        Text("Connect Apple Health to see your training here.")
+                            .font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private func runStat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.clarionData(16)).foregroundStyle(Color.ink)
+            Text(label).font(.clarionLabel(9)).tracking(0.1 * 9).foregroundStyle(Color.ink3)
+        }
+    }
+
+    private func workoutKindLabel(_ type: String) -> String {
+        switch type {
+        case "run": return "Last run"
+        case "ride": return "Last ride"
+        case "swim": return "Last swim"
+        case "strength": return "Last lift"
+        case "walk": return "Last walk"
+        case "hike": return "Last hike"
+        case "row": return "Last row"
+        default: return "Last session"
+        }
+    }
+
+    /// "TODAY" / "YESTERDAY" / "N DAYS AGO" for a YYYY-MM-DD user-local workout date.
+    private func relativeDay(_ iso: String) -> String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: String(iso.prefix(10))) else { return iso.uppercased() }
+        let cal = Calendar(identifier: .gregorian)
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day ?? 0
+        switch days {
+        case ..<1: return "TODAY"
+        case 1: return "YESTERDAY"
+        default: return "\(days) DAYS AGO"
+        }
+    }
+
+    /// Seconds-per-km → "M:SS /km".
+    private func formatPace(_ secPerKm: Double) -> String {
+        let s = Int(secPerKm.rounded())
+        return "\(s / 60):\(String(format: "%02d", s % 60)) /km"
     }
 
     private var personaTunedLabel: String? {

@@ -4,7 +4,9 @@ import SwiftUI
 /// sentence) is deliberately NOT in this list — it's the fixed star of the screen. Order and
 /// visibility are persona-defaulted and user-overridable (see `HomeLayoutStore`).
 enum HomeCard: String, CaseIterable, Codable, Identifiable {
+    case feeling
     case metrics
+    case run
     case victory
     case doses
     case countdown
@@ -14,7 +16,9 @@ enum HomeCard: String, CaseIterable, Codable, Identifiable {
 
     var title: String {
         switch self {
+        case .feeling: return "How you feel"
         case .metrics: return "Metric row"
+        case .run: return "Recent run"
         case .victory: return "Progress card"
         case .doses: return "Today's doses"
         case .countdown: return "Next-draw countdown"
@@ -24,7 +28,9 @@ enum HomeCard: String, CaseIterable, Codable, Identifiable {
 
     var caption: String {
         switch self {
+        case .feeling: return "A daily check-in — drives readiness when your wearable's quiet"
         case .metrics: return "Your key numbers, tuned to your goal"
+        case .run: return "Your latest training session"
         case .victory: return "The biggest movement across draws"
         case .doses: return "Log today's protocol"
         case .countdown: return "Protocol days banked until your retest"
@@ -38,9 +44,11 @@ enum HomeCard: String, CaseIterable, Codable, Identifiable {
     static func defaultOrder(for persona: Persona) -> [HomeCard] {
         switch persona {
         case .endurance, .strength:
-            return [.metrics, .doses, .victory, .countdown, .nudge]
+            // Athletes lead with the daily self-check + their numbers + last session, then
+            // adherence and progress. The feeling check-in sits up top so it's the first tap.
+            return [.feeling, .metrics, .run, .doses, .victory, .countdown, .nudge]
         case .menopause, .general:
-            return [.metrics, .victory, .doses, .countdown, .nudge]
+            return [.feeling, .metrics, .victory, .doses, .countdown, .nudge, .run]
         }
     }
 }

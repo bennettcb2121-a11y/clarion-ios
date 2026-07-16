@@ -19,7 +19,7 @@ struct VitalsView: View {
             ScrollView {
                 switch store.state {
                 case .loading:
-                    ProgressView().padding(.top, 80)
+                    ClarionLoadingView()
                 case .loaded(let r), .demo(let r):
                     content(r)
                 }

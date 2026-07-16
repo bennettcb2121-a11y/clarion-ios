@@ -21,7 +21,7 @@ struct ReportView: View {
                 } else {
                     switch store.state {
                     case .loading:
-                        ProgressView().padding(.top, 80)
+                        ClarionLoadingView()
                     case .empty:
                         emptyState
                     case .error(let m):
