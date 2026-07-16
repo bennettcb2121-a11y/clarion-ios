@@ -160,4 +160,47 @@ final class HealthStore {
             store.enableBackgroundDelivery(for: type, frequency: .hourly) { _, _ in }
         }
     }
+
+    #if DEBUG
+    // MARK: - Debug seeding (Simulator only; write permission ships in Debug builds alone)
+
+    /// The types the seeder writes so the Simulator — which has no watch/Oura — can show the
+    /// full wearable dashboard.
+    static var seedableTypes: Set<HKSampleType> {
+        var s = Set<HKSampleType>()
+        let ids: [HKQuantityTypeIdentifier] = [
+            .heartRateVariabilitySDNN, .restingHeartRate, .heartRate, .vo2Max,
+            .stepCount, .activeEnergyBurned, .respiratoryRate,
+        ]
+        for id in ids { if let t = HKObjectType.quantityType(forIdentifier: id) { s.insert(t) } }
+        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { s.insert(sleep) }
+        s.insert(HKObjectType.workoutType())
+        return s
+    }
+
+    func requestSeedAuthorization() async throws {
+        try await store.requestAuthorization(toShare: Self.seedableTypes, read: [])
+    }
+
+    func save(_ objects: [HKObject]) async throws {
+        try await store.save(objects)
+    }
+
+    /// Delete samples THIS app previously wrote for `type` (HealthKit forbids deleting another
+    /// source's data). Lets the seeder be idempotent instead of doubling sleep/steps on re-run.
+    @discardableResult
+    func deleteOwnSamples(of type: HKSampleType) async throws -> Int {
+        let mine = HKQuery.predicateForObjects(from: HKSource.default())
+        return try await withCheckedThrowingContinuation { cont in
+            store.deleteObjects(of: type, predicate: mine) { _, count, error in
+                if let error = error as NSError?,
+                   !(error.domain == HKError.errorDomain && error.code == HKError.Code.errorNoData.rawValue) {
+                    cont.resume(throwing: error)
+                } else {
+                    cont.resume(returning: count)
+                }
+            }
+        }
+    }
+    #endif
 }

@@ -8,6 +8,11 @@ import SwiftUI
 /// exactly like the web keeps units as unpersisted component state.
 struct SettingsView: View {
     @EnvironmentObject private var auth: SupabaseAuth
+    #if DEBUG
+    @EnvironmentObject private var sync: SyncCoordinator
+    @State private var seeding = false
+    @State private var seedResult: String?
+    #endif
     // Fresh SupabaseAuth shares the Keychain-persisted session (RootView pattern).
     @StateObject private var store = SettingsStore(auth: SupabaseAuth.shared)
 
@@ -66,6 +71,9 @@ struct SettingsView: View {
                     }
 
                     healthCard
+                    #if DEBUG
+                    developerCard
+                    #endif
                     supportCard
                     privacyCard
                     accountCard
@@ -600,6 +608,54 @@ struct SettingsView: View {
             }
         }
     }
+
+    #if DEBUG
+    /// Simulator helper: fill Apple Health with sample endurance data so the wearable dashboard
+    /// populates without a real watch/Oura. Debug builds only.
+    private var developerCard: some View {
+        section("Developer") {
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    Task {
+                        seeding = true
+                        seedResult = nil
+                        do {
+                            try await HealthSeeder.seed()
+                            await sync.sync()
+                            seedResult = "Seeded 14 days — pull to refresh Home."
+                            Haptics.success()
+                        } catch {
+                            seedResult = "Seed failed: \(error.localizedDescription)"
+                            Haptics.warning()
+                        }
+                        seeding = false
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "waveform.path.ecg.rectangle")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.forest)
+                            .frame(width: 24)
+                        Text(seeding ? "Seeding sample Health…" : "Seed sample Health data")
+                            .font(.clarionBody(16)).foregroundStyle(Color.ink)
+                        Spacer()
+                        if seeding { ProgressView().controlSize(.small) }
+                    }
+                    .padding(.horizontal, Brand.s4)
+                    .padding(.vertical, Brand.s3)
+                }
+                .buttonStyle(PressableStyle())
+                .disabled(seeding)
+                Text(seedResult ?? "Simulator only: writes ~14 days of sleep, HRV, resting HR, VO₂max, and a few runs into Apple Health, then syncs.")
+                    .font(.clarionBody(13))
+                    .foregroundStyle(seedResult == nil ? Color.ink3 : Color.forest)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Brand.s4)
+                    .padding(.bottom, Brand.s3)
+            }
+        }
+    }
+    #endif
 
     private var supportCard: some View {
         section("Support") {

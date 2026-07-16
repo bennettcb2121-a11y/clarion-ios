@@ -237,6 +237,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Clarion;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Clarion reads the health metrics relevant to your goals — sleep, heart rate variability, resting heart rate, workouts, activity, and overnight wrist temperature — to show how they connect with your bloodwork on your Clarion dashboard. Your health data is never used for advertising or shared with third parties.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Debug builds only: Clarion can write sample Health data so the dashboard can be tested in the Simulator. Release builds never write to Health.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -85,6 +85,13 @@ struct ClarionApp: App {
             RootView()
                 .environmentObject(auth)
                 .environmentObject(sync)
+                .task {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("SEED_AND_DUMP") {
+                        await DebugSeedDump.run()
+                    }
+                    #endif
+                }
         }
     }
 }
