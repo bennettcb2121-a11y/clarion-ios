@@ -15,7 +15,9 @@ struct HomeView: View {
     @EnvironmentObject private var sync: SyncCoordinator
     @EnvironmentObject private var subscription: SubscriptionStore
     /// Same real snapshot the Vitals tab renders — the brief never recomputes readiness.
-    @StateObject private var vitals = VitalsStore(auth: SupabaseAuth.shared)
+    /// Injected from RootView so Home and the Vitals tab share ONE store: when each owned its
+    /// own, they disagreed (tab: readiness 64 / HRV 51; Home: "New day." and no metric row).
+    @ObservedObject var vitals: VitalsStore
     @AppStorage("clarion_health_authorized") private var healthAuthorized = false
     /// "Viewed" markers for the nudge slot's next-step ladder (web: HOME_*_VIEWED_KEY).
     @AppStorage("clarion_home_report_viewed") private var reportViewed = false
@@ -37,10 +39,11 @@ struct HomeView: View {
     /// Today's subjective "how are you feeling?" check-in (device-local, per user + day).
     @StateObject private var feeling: FeelingStore
 
-    init(persona: Persona, report: ReportStore, log: ProtocolLogStore, tab: Binding<Int>) {
+    init(persona: Persona, report: ReportStore, log: ProtocolLogStore, vitals: VitalsStore, tab: Binding<Int>) {
         self.persona = persona
         self._report = ObservedObject(wrappedValue: report)
         self._log = ObservedObject(wrappedValue: log)
+        self._vitals = ObservedObject(wrappedValue: vitals)
         self._tab = tab
         // The shared session reads the Keychain synchronously, so the layout key is user-scoped
         // from the first frame.
@@ -765,13 +768,27 @@ struct HomeView: View {
         return "\(s / 60):\(String(format: "%02d", s % 60)) /km"
     }
 
+    /// Age in days of the newest REAL wearable reading behind the metric row. The row shows the
+    /// last known numbers, so it has to say when they aren't from today — same honesty rule the
+    /// Vitals tab applies with its "as of Jul 13" chip.
+    private var metricsReadingAgeDays: Int? {
+        let source = sync.lastSummary.isEmpty ? (briefWindow?.daily ?? []) : sync.lastSummary
+        guard !source.isEmpty else { return nil }
+        return MorningBrief.latestRealReadingAgeDays(source, dateKey: ProtocolLogStore.todayKey())
+    }
+
     private var personaTunedLabel: String? {
+        let base: String?
         switch persona {
-        case .endurance: return "Tuned for endurance"
-        case .strength: return "Tuned for strength"
-        case .menopause: return "Tuned for your transition"
-        case .general: return nil
+        case .endurance: base = "Tuned for endurance"
+        case .strength: base = "Tuned for strength"
+        case .menopause: base = "Tuned for your transition"
+        case .general: base = nil
         }
+        guard let age = metricsReadingAgeDays, age >= 2 else { return base }
+        let stale = "last reading \(age) days ago"
+        guard let base else { return stale.prefix(1).uppercased() + stale.dropFirst() }
+        return "\(base) · \(stale)"
     }
 
     /// The three numbers to lead with, by persona — first available wins, so a persona's flagship
@@ -779,19 +796,28 @@ struct HomeView: View {
     /// set otherwise. Same wearable window the brief reads; Score comes from the report.
     private var homeMetrics: [HomeMetric] {
         let source = sync.lastSummary.isEmpty ? (briefWindow?.daily ?? []) : sync.lastSummary
-        let today = source.last
+
+        // The daily array runs THROUGH TODAY and its tail rows are EMPTY on days the device
+        // hasn't uploaded. Reading `source.last` therefore grabbed a blank row and hid every
+        // number the user actually has — Home showed only "86 SCORE" while the Vitals tab
+        // showed "HRV 51 · as of Jul 13" off the same snapshot. Take each metric's most recent
+        // real value instead (mirrors latestRealReadingAgeDays' backwards scan).
+        func latest<T>(_ pick: (WearableDailyMetrics) -> T?) -> T? {
+            for d in source.reversed() { if let v = pick(d) { return v } }
+            return nil
+        }
 
         func hrv() -> HomeMetric? {
-            today?.hrv.map { HomeMetric(id: "hrv", value: "\(Int($0))", unit: "ms", caption: "HRV") }
+            latest { $0.hrv }.map { HomeMetric(id: "hrv", value: "\(Int($0))", unit: "ms", caption: "HRV") }
         }
         func sleep() -> HomeMetric? {
-            today?.sleepDurationMin.map { HomeMetric(id: "sleep", value: formatMinutes($0), unit: nil, caption: "Sleep") }
+            latest { $0.sleepDurationMin }.map { HomeMetric(id: "sleep", value: formatMinutes($0), unit: nil, caption: "Sleep") }
         }
         func vo2() -> HomeMetric? {
-            today?.vo2Max.map { HomeMetric(id: "vo2max", value: String(format: "%.1f", $0), unit: nil, caption: "VO₂max") }
+            latest { $0.vo2Max }.map { HomeMetric(id: "vo2max", value: String(format: "%.1f", $0), unit: nil, caption: "VO₂max") }
         }
         func temp() -> HomeMetric? {
-            today?.skinTempDeviationC.map { HomeMetric(id: "temp", value: String(format: "%+.2f", $0), unit: "°C", caption: "Temp") }
+            latest { $0.skinTempDeviationC }.map { HomeMetric(id: "temp", value: String(format: "%+.2f", $0), unit: "°C", caption: "Temp") }
         }
         func scoreMetric() -> HomeMetric? {
             guard let results = reportData?.results, !results.isEmpty else { return nil }

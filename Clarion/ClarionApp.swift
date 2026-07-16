@@ -102,6 +102,7 @@ struct RootView: View {
     @StateObject private var report: ReportStore
     @StateObject private var protocolLog: ProtocolLogStore
     @StateObject private var subscription: SubscriptionStore
+    @StateObject private var vitals: VitalsStore
 
     init() {
         // These stores need auth; RootView is created inside the auth-provided environment, but
@@ -110,6 +111,9 @@ struct RootView: View {
         _report = StateObject(wrappedValue: ReportStore(auth: SupabaseAuth.shared))
         _protocolLog = StateObject(wrappedValue: ProtocolLogStore(auth: SupabaseAuth.shared))
         _subscription = StateObject(wrappedValue: SubscriptionStore(auth: SupabaseAuth.shared))
+        // ONE snapshot store for Home + the Vitals tab. Owning one each let them disagree: the
+        // tab rendered real data while Home's copy silently fell back to the sample.
+        _vitals = StateObject(wrappedValue: VitalsStore(auth: SupabaseAuth.shared))
     }
 
     /// Cached across launches so permission scoping is right before the network returns;
@@ -158,9 +162,9 @@ struct RootView: View {
             // 2 Report · 3 Plan · 4 Shop. Settings lives behind the gear in Home's nav
             // bar; the Library is a destination grid on Home plus a toolbar icon.
             TabView(selection: $tab) {
-                HomeView(persona: persona, report: report, log: protocolLog, tab: $tab)
+                HomeView(persona: persona, report: report, log: protocolLog, vitals: vitals, tab: $tab)
                     .tabItem { Label("Home", systemImage: "house") }.tag(0)
-                VitalsView(auth: auth)
+                VitalsView(store: vitals)
                     .tabItem { Label("Vitals", systemImage: "waveform.path.ecg") }.tag(1)
                 // Report / Plan / Shop are NATIVE screens (each owns its NavigationStack).
                 // They read the same GET /api/report + /api/shop the webview did, but render

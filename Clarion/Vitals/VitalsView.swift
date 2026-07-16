@@ -7,12 +7,11 @@ import Charts
 struct VitalsView: View {
     @EnvironmentObject private var auth: SupabaseAuth
     @EnvironmentObject private var sync: SyncCoordinator
-    @StateObject private var store: VitalsStore
+    /// Injected, NOT owned: Home reads the same snapshot for its metric row and readiness. Two
+    /// separate stores drifted apart — the tab showed real data (readiness 64, HRV 51) while
+    /// Home's copy had fallen back to the sample and rendered no metrics at all.
+    @ObservedObject var store: VitalsStore
     @State private var customizing = false
-
-    init(auth: SupabaseAuth) {
-        _store = StateObject(wrappedValue: VitalsStore(auth: auth))
-    }
 
     var body: some View {
         NavigationStack {
