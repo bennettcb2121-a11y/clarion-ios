@@ -39,7 +39,11 @@ final class VitalsStore: ObservableObject {
             // The server already falls back to demo when nothing is synced; honor its flag.
             state = decoded.snapshot.isDemo ? .demo(decoded) : .loaded(decoded)
         } catch {
-            // Offline / endpoint not deployed yet → local sample so the app still shows its value.
+            // Preserve real last-good vitals on a flaky reload — never swap a loaded snapshot
+            // for the sample (that dropped Home's readiness to "New day." on pull-to-refresh,
+            // since briefWindow only honors .loaded in production). Fall back to the local
+            // sample ONLY on a first load, when nothing real is on screen yet.
+            if case .loaded = state { return }
             let demo = DemoSnapshot.endurance()
             if widgetKeys.isEmpty { widgetKeys = demo.widgetKeys }
             state = .demo(demo)

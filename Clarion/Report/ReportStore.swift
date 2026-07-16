@@ -35,7 +35,17 @@ final class ReportStore: ObservableObject {
                 return
             }
             #endif
-            state = .error("Couldn't load your report. Pull to retry.")
+            // A flaky reload (the sim's dropped connections, a transient 5xx) must NEVER
+            // blank out a report the user already has — that's what made the whole daily
+            // loop vanish on pull-to-refresh. Keep the last-good .ready/.empty and swallow
+            // the error; only surface it on a true first-load failure (still .loading), when
+            // there's nothing to show yet.
+            switch state {
+            case .ready, .empty:
+                return
+            case .loading, .error:
+                state = .error("Couldn't load your report. Pull to retry.")
+            }
         }
     }
 
