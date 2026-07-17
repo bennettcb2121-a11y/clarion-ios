@@ -95,49 +95,78 @@ struct PlanView: View {
 
     // MARK: - Money story
 
+    @ViewBuilder
     private func moneyCard(_ r: ReportResponse, need: [StackItem], maintain: [StackItem], cut: [StackItem]) -> some View {
         let needCost = need.reduce(0) { $0 + $1.monthlyCost }
         let maintainCost = maintain.reduce(0) { $0 + $1.monthlyCost }
         let cutCost = cut.reduce(0) { $0 + $1.monthlyCost }
         let planCost = needCost + maintainCost
 
-        return VStack(alignment: .leading, spacing: Brand.s3) {
-            Eyebrow("Your stack")
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("$\(Int(planCost.rounded()))")
-                    .font(.clarionDisplay(34))
+        // Stored recommendations don't always carry an estimated cost (older rows, or a
+        // supplement the pricing table didn't match) — then every monthlyCost is 0. Showing
+        // "$0/mo · $0 backed by your blood" with an empty bar reads as broken, so fall back to
+        // the shape of the stack (how many are lab-backed vs kept) instead of a fake dollar hero.
+        if planCost + cutCost <= 0 {
+            VStack(alignment: .leading, spacing: Brand.s2) {
+                Eyebrow("Your stack")
+                Text(stackShapeHeadline(need: need.count, maintain: maintain.count))
+                    .font(.clarionDisplay(22))
                     .foregroundStyle(Color.ink)
-                Text("/mo")
-                    .font(.clarionData(13))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Backed by your latest panel.")
+                    .font(.clarionBody(13))
                     .foregroundStyle(Color.ink3)
-                Spacer()
-                if cutCost > 0 {
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text("save $\(Int(cutCost.rounded()))/mo")
-                            .font(.clarionData(13))
-                            .foregroundStyle(Color.forest)
-                        Text("by cutting")
-                            .font(.clarionBody(11))
-                            .foregroundStyle(Color.ink3)
+            }
+            .padding(Brand.s5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clarionCard(cornerRadius: Brand.rXL)
+        } else {
+            VStack(alignment: .leading, spacing: Brand.s3) {
+                Eyebrow("Your stack")
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text("$\(Int(planCost.rounded()))")
+                        .font(.clarionDisplay(34))
+                        .foregroundStyle(Color.ink)
+                    Text("/mo")
+                        .font(.clarionData(13))
+                        .foregroundStyle(Color.ink3)
+                    Spacer()
+                    if cutCost > 0 {
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("save $\(Int(cutCost.rounded()))/mo")
+                                .font(.clarionData(13))
+                                .foregroundStyle(Color.forest)
+                            Text("by cutting")
+                                .font(.clarionBody(11))
+                                .foregroundStyle(Color.ink3)
+                        }
+                    }
+                }
+
+                MoneyBar(need: needCost, maintain: maintainCost, skip: max(cutCost, 0))
+
+                HStack(spacing: Brand.s4) {
+                    legend("$\(Int(needCost.rounded())) backed by your blood", color: .forest)
+                    if maintainCost > 0 {
+                        legend("$\(Int(maintainCost.rounded())) keep", color: .amber)
+                    }
+                    if cutCost > 0 {
+                        legend("$\(Int(cutCost.rounded())) cut", color: .ink4)
                     }
                 }
             }
-
-            MoneyBar(need: needCost, maintain: maintainCost, skip: max(cutCost, 0))
-
-            HStack(spacing: Brand.s4) {
-                legend("$\(Int(needCost.rounded())) backed by your blood", color: .forest)
-                if maintainCost > 0 {
-                    legend("$\(Int(maintainCost.rounded())) keep", color: .amber)
-                }
-                if cutCost > 0 {
-                    legend("$\(Int(cutCost.rounded())) cut", color: .ink4)
-                }
-            }
+            .padding(Brand.s5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clarionCard(cornerRadius: Brand.rXL)
         }
-        .padding(Brand.s5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clarionCard(cornerRadius: Brand.rXL)
+    }
+
+    /// "3 lab-backed · 2 worth keeping" — the cost-free framing when no prices are on file.
+    private func stackShapeHeadline(need: Int, maintain: Int) -> String {
+        var parts: [String] = []
+        if need > 0 { parts.append("\(need) lab-backed") }
+        if maintain > 0 { parts.append("\(maintain) worth keeping") }
+        return parts.isEmpty ? "Your current protocol" : parts.joined(separator: " · ")
     }
 
     private func legend(_ text: String, color: Color) -> some View {
