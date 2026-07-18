@@ -8,6 +8,9 @@ struct SignInView: View {
     @State private var busy = false
     @State private var emailExpanded = false
     @State private var errorMessage: String?
+    /// Raw nonce for the in-flight Sign in with Apple request (hashed into the request,
+    /// raw copy handed to Supabase to match the token's nonce claim).
+    @State private var appleRawNonce: String?
 
     var body: some View {
         NavigationStack {
@@ -18,16 +21,20 @@ struct SignInView: View {
                         .padding(.bottom, 8)
 
                     // Primary path: the providers most Clarion accounts were created with.
-                    SignInWithAppleButton(.signIn) { _ in } onCompletion: { _ in }
-                        .signInWithAppleButtonStyle(.black)
-                        .frame(height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .overlay(
-                            // Route Apple's button through our web-OAuth flow (keeps one auth path).
-                            Button { Task { await oauth(.apple) } } label: { Color.clear }
-                                .buttonStyle(.plain)
-                        )
-                        .disabled(busy)
+                    // NATIVE Sign in with Apple — a real ASAuthorization request (nonce-protected),
+                    // exchanged with Supabase via the id_token grant. No web browser.
+                    SignInWithAppleButton(.signIn) { request in
+                        let raw = AppleNonce.random()
+                        appleRawNonce = raw
+                        request.requestedScopes = [.fullName, .email]
+                        request.nonce = AppleNonce.sha256(raw)
+                    } onCompletion: { result in
+                        Task { await handleApple(result) }
+                    }
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 50)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .disabled(busy)
 
                     Button { Task { await oauth(.google) } } label: {
                         HStack(spacing: 10) {
@@ -127,5 +134,33 @@ struct SignInView: View {
             errorMessage = error.localizedDescription
         }
         busy = false
+    }
+
+    /// Native Sign in with Apple completion: pull the identity token from the credential and
+    /// exchange it (with the raw nonce) for a Supabase session.
+    private func handleApple(_ result: Result<ASAuthorization, Error>) async {
+        switch result {
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let idToken = String(data: tokenData, encoding: .utf8),
+                  let nonce = appleRawNonce else {
+                errorMessage = "Apple sign-in didn't return a token. Please try again."
+                return
+            }
+            busy = true; errorMessage = nil
+            Haptics.commit()
+            do {
+                try await auth.signInWithApple(idToken: idToken, nonce: nonce)
+                Haptics.success()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            busy = false
+        case .failure(let error):
+            // A user-cancelled sheet is not an error worth surfacing.
+            if (error as? ASAuthorizationError)?.code == .canceled { return }
+            errorMessage = error.localizedDescription
+        }
     }
 }

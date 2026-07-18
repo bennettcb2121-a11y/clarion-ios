@@ -66,6 +66,20 @@ enum ClarionAPI {
         _ = try await post("api/consents/record", body: body, accessToken: accessToken)
     }
 
+    // MARK: - In-App Purchase mirror (POST /api/iap/verify)
+
+    /// Best-effort: report a verified StoreKit transaction to the backend so the web dashboard
+    /// and other devices reflect the Clarion+ purchase. The client already gates the UI locally
+    /// from StoreKit, so any failure here (endpoint not deployed yet, offline) is swallowed.
+    /// The server should App-Store-Server-API–validate the transaction and set the entitlement.
+    static func mirrorIAPPurchase(transactionJSON: Data, accessToken: String) async {
+        do {
+            _ = try await post("api/iap/verify", body: transactionJSON, accessToken: accessToken)
+        } catch {
+            // Non-fatal — local StoreKit entitlement stands.
+        }
+    }
+
     // MARK: - Settings (GET/PATCH /api/account/profile)
 
     private struct ProfileEnvelope: Decodable { var profile: ProfileSettings? }

@@ -1,0 +1,70 @@
+{
+  "identifier" : "DB7EBEC7-CD69-444B-8F5F-0AD501D6B237",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "clarion.local",
+    "_developerTeamID" : "D5J5K83C9P",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "48D9C850-D270-4087-9C00-E38371D275C1",
+      "localizations" : [],
+      "name" : "Clarion Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "12.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "C15D922C-7430-4DD6-905C-9A5D760B3D89",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Your report, plan, labs history, and biomarker library — matched to your bloodwork.",
+              "displayName" : "Clarion+ Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "tech.clarionlabs.clarion.plus.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Clarion+ Monthly",
+          "subscriptionGroupID" : "48D9C850-D270-4087-9C00-E38371D275C1",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : []
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "99.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "9E38DABC-6B1D-470A-B4C6-57CABBE4BFF7",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Your report, plan, labs history, and biomarker library — matched to your bloodwork. Best value.",
+              "displayName" : "Clarion+ Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "tech.clarionlabs.clarion.plus.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Clarion+ Annual",
+          "subscriptionGroupID" : "48D9C850-D270-4087-9C00-E38371D275C1",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : []
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

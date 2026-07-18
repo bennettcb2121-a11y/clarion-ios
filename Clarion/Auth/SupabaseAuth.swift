@@ -93,6 +93,20 @@ final class SupabaseAuth: ObservableObject {
         persist(session)
     }
 
+    /// Native Sign in with Apple. `idToken` is the JWT from ASAuthorizationAppleIDCredential;
+    /// `nonce` is the RAW nonce whose SHA256 was sent in the Apple request — GoTrue re-hashes it
+    /// and matches the token's `nonce` claim. Exchanged via GoTrue's id_token grant (the same
+    /// path supabase-js `signInWithIdToken` uses), so no web browser and no callback scheme.
+    /// REQUIRES: Apple enabled as a provider in Supabase → Auth → Providers, with the app's
+    /// bundle id (`tech.clarionlabs.clarion`) in the allowed client IDs.
+    func signInWithApple(idToken: String, nonce: String) async throws {
+        let session = try await tokenRequest(
+            grantType: "id_token",
+            body: ["provider": "apple", "id_token": idToken, "nonce": nonce]
+        )
+        persist(session)
+    }
+
     /// Returns a fresh access token, refreshing first if the current one is near expiry.
     func validAccessToken() async throws -> String {
         guard let current = session else { throw AuthError.noSession }
