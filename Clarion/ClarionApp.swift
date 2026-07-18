@@ -156,8 +156,54 @@ struct RootView: View {
     @State private var tab = 0
     @Environment(\.scenePhase) private var scenePhase
 
+    // MARK: - Native survey gate
+    // A signed-in user whose profile row is null hasn't taken the survey anywhere yet —
+    // the dashboard would be uncalibrated. Show the native survey once; remember
+    // completion per user so relaunches never flash it. Fails OPEN (any error → app).
+    private enum SurveyGate { case checking, needed, passed }
+    @State private var surveyGate: SurveyGate = .checking
+
+    private var surveyDoneKey: String { "clarion_survey_done_\(SupabaseAuth.shared.session?.userId ?? "anon")" }
+
+    private var uiTestSurvey: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("UITEST_SURVEY")
+        #else
+        return false
+        #endif
+    }
+
+    private func checkSurveyGate() async {
+        if UserDefaults.standard.bool(forKey: surveyDoneKey) { surveyGate = .passed; return }
+        guard let token = try? await auth.validAccessToken() else { surveyGate = .passed; return }
+        do {
+            let profile = try await ClarionAPI.fetchProfileSettings(accessToken: token)
+            if profile == nil {
+                surveyGate = .needed
+            } else {
+                UserDefaults.standard.set(true, forKey: surveyDoneKey)
+                surveyGate = .passed
+            }
+        } catch {
+            surveyGate = .passed // fail open — never lock a user out of their data
+        }
+    }
+
     var body: some View {
-        if auth.isSignedIn || uiTestVitals || uiTestWeb {
+        if uiTestSurvey {
+            SurveyFlowView(auth: auth, onFinished: {})
+        } else if auth.isSignedIn && surveyGate == .checking {
+            ClarionLoadingView()
+                .background(Color.paper.ignoresSafeArea())
+                .task { await checkSurveyGate() }
+        } else if auth.isSignedIn && surveyGate == .needed {
+            SurveyFlowView(auth: auth) {
+                UserDefaults.standard.set(true, forKey: surveyDoneKey)
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) { surveyGate = .passed }
+                // The survey's answers change what every tab shows — load fresh.
+                Task { await report.load() }
+            }
+        } else if auth.isSignedIn || uiTestVitals || uiTestWeb {
             // Tab order (and the DEBUG `TAB=<n>` screenshot arg): 0 Home · 1 Vitals ·
             // 2 Report · 3 Plan · 4 Shop. Settings lives behind the gear in Home's nav
             // bar; the Library is a destination grid on Home plus a toolbar icon.
@@ -219,6 +265,10 @@ struct RootView: View {
             }
         } else {
             SignInView()
+                .onAppear {
+                    // A fresh (possibly different) account signs in next — re-check its survey.
+                    surveyGate = .checking
+                }
         }
     }
 
