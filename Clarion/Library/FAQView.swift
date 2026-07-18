@@ -31,7 +31,7 @@ struct FAQView: View {
         ]),
         FAQGroup(label: "Plans & billing", items: [
             Item(question: "How does billing work?",
-                 answer: "One-time analysis purchases and optional subscriptions (e.g. Clarion+) are handled on clarionlabs.tech. For receipt or billing questions, contact support with the email on this page."),
+                 answer: "Clarion+ and one-time analysis access are managed through your account. For receipt or billing questions, contact support with the email on this page."),
             Item(question: "What is Clarion Lite?",
                  answer: "Clarion Lite is a lower-priced subscription that gives you dashboard access and education based on your profile and symptoms — not on your lab results. It does not provide biomarker scoring, personalized lab interpretation, or lab-matched dosing. Full Clarion adds the one-time analysis and bloodwork-based personalization. Clarion Lite is for education and habit support only, not a substitute for labs or medical care."),
         ]),
