@@ -196,4 +196,32 @@ enum UnitsMath {
         let s = Int(perUnit.rounded())
         return "\(s / 60):\(String(format: "%02d", s % 60)) /\(imperial ? "mi" : "km")"
     }
+
+    /// Speed for wheeled/moving sports where pace makes no sense (cycling): "18.4 mph" / "29.6 km/h".
+    static func speedString(kmh: Double, imperial: Bool) -> String {
+        let v = imperial ? kmh / kmPerMile : kmh
+        return String(format: "%.1f %@", v, imperial ? "mph" : "km/h")
+    }
+
+    /// Speed from a canonical sec-per-km pace (avg moving speed).
+    static func speedString(secPerKm: Double, imperial: Bool) -> String {
+        speedString(kmh: secPerKm > 0 ? 3600.0 / secPerKm : 0, imperial: imperial)
+    }
+
+    /// Speed from raw distance + duration (fallback when no pace is recorded).
+    static func speedString(km: Double, minutes: Double, imperial: Bool) -> String {
+        speedString(kmh: minutes > 0 ? km / (minutes / 60.0) : 0, imperial: imperial)
+    }
+
+    /// Swim split, "M:SS /100m" from sec-per-km (÷10) — the universal training convention.
+    static func pacePer100m(secPerKm: Double) -> String {
+        let s = Int((secPerKm / 10).rounded())
+        return "\(s / 60):\(String(format: "%02d", s % 60)) /100m"
+    }
+
+    /// Row split, "M:SS /500m" from sec-per-km (÷2) — how ergs and rowers report.
+    static func pacePer500m(secPerKm: Double) -> String {
+        let s = Int((secPerKm / 2).rounded())
+        return "\(s / 60):\(String(format: "%02d", s % 60)) /500m"
+    }
 }

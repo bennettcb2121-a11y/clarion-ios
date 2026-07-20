@@ -694,7 +694,7 @@ struct HomeView: View {
                     }
                     HStack(spacing: Brand.s5) {
                         runStat(formatMinutes(w.durationMin), "TIME")
-                        if let pace = w.avgPaceSecPerKm { runStat(formatPace(pace), "PACE") }
+                        if let m = workoutMetric(w) { runStat(m.value, m.label) }
                         if let hr = w.avgHeartRate { runStat("\(Int(hr))", "AVG HR") }
                     }
                 }
@@ -765,9 +765,35 @@ struct HomeView: View {
         }
     }
 
-    /// Seconds-per-km → "M:SS /mi" or "M:SS /km" in the user's preferred unit.
-    private func formatPace(_ secPerKm: Double) -> String {
-        UnitsMath.paceString(secPerKm: secPerKm, imperial: unitsImperial)
+    /// The natural intensity metric for a workout, as (value, label). Cyclists read speed,
+    /// runners/walkers read pace, swimmers a /100m split, rowers a /500m split — showing a
+    /// running pace for a bike ride (as we used to) is meaningless. Falls back to computing
+    /// pace/speed from distance ÷ duration when the wearable didn't record an average pace.
+    private func workoutMetric(_ w: WearableWorkout) -> (value: String, label: String)? {
+        switch w.type {
+        case "ride":
+            if let pace = w.avgPaceSecPerKm, pace > 0 {
+                return (UnitsMath.speedString(secPerKm: pace, imperial: unitsImperial), "SPEED")
+            }
+            guard let km = w.distanceKm, km > 0, w.durationMin > 0 else { return nil }
+            return (UnitsMath.speedString(km: km, minutes: w.durationMin, imperial: unitsImperial), "SPEED")
+        case "swim":
+            guard let pace = pacePerKm(w) else { return nil }
+            return (UnitsMath.pacePer100m(secPerKm: pace), "PACE")
+        case "row":
+            guard let pace = pacePerKm(w) else { return nil }
+            return (UnitsMath.pacePer500m(secPerKm: pace), "SPLIT")
+        default: // run, walk, hike — pace in the user's unit
+            guard let pace = pacePerKm(w) else { return nil }
+            return (UnitsMath.paceString(secPerKm: pace, imperial: unitsImperial), "PACE")
+        }
+    }
+
+    /// Recorded average pace, or one derived from distance ÷ duration.
+    private func pacePerKm(_ w: WearableWorkout) -> Double? {
+        if let pace = w.avgPaceSecPerKm, pace > 0 { return pace }
+        guard let km = w.distanceKm, km > 0, w.durationMin > 0 else { return nil }
+        return (w.durationMin * 60) / km
     }
 
     /// Age in days of the newest REAL wearable reading behind the metric row. The row shows the
