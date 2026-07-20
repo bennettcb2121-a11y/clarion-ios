@@ -9,6 +9,11 @@ struct ReadinessRing: View {
 
     @State private var progress: CGFloat = 0
     @State private var shownValue: Int = 0
+    /// Animate the intro ONCE; TabView re-fires `.onAppear` on every return, which otherwise
+    /// reset the number to 0 and re-counted — the visible "glitchy reload" on the Vitals tab.
+    @State private var didAnimate = false
+    @State private var animGen = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var target: CGFloat { CGFloat(score ?? 0) / 100 }
 
@@ -41,17 +46,27 @@ struct ReadinessRing: View {
             }
         }
         .frame(width: size, height: size)
-        .onAppear {
-            withAnimation(.easeOut(duration: 1.4)) { progress = target }
-            animateCount()
-        }
+        .onAppear { guard !didAnimate else { return }; didAnimate = true; animateIn() }
+        // Pull-to-refresh changes the score in place; without this the ring kept the OLD
+        // number/arc until you left and re-entered the tab.
+        .onChange(of: score) { _, _ in animateIn() }
     }
 
-    private func animateCount() {
-        guard let score else { return }
+    private func animateIn() {
+        animGen &+= 1
+        let gen = animGen
+        if reduceMotion {
+            progress = target
+            shownValue = score ?? 0
+            return
+        }
+        progress = 0
+        withAnimation(.easeOut(duration: 1.4)) { progress = target }
+        guard let score else { shownValue = 0; return }
         let steps = 30
         for i in 0...steps {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * (1.1 / Double(steps))) {
+                guard gen == animGen else { return }
                 let t = Double(i) / Double(steps)
                 shownValue = Int((1 - pow(1 - t, 3)) * Double(score))
             }

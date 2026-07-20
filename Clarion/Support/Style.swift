@@ -249,13 +249,22 @@ struct SecondaryButtonStyle: ButtonStyle {
 struct EntranceModifier: ViewModifier {
     let index: Int
     @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
             .offset(y: shown ? 0 : 14)
             .onAppear {
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.82).delay(Double(index) * 0.06)) {
+                // Play ONCE. Without this guard the stagger re-fires every time the view
+                // re-appears (tab switch / pop back), reading as a "glitchy" re-load.
+                guard !shown else { return }
+                // Respect Reduce Motion — no slide/fade, just show.
+                if reduceMotion {
+                    shown = true
+                    return
+                }
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.86).delay(Double(index) * 0.05)) {
                     shown = true
                 }
             }

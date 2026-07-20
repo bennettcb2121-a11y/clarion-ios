@@ -44,7 +44,7 @@ struct VitalsView: View {
                 await reload()
             }
         }
-        .task { await store.load() }
+        .task { if case .loading = store.state { await store.load() } }
     }
 
     @ViewBuilder

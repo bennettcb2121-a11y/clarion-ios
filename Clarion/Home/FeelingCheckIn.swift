@@ -49,7 +49,7 @@ final class FeelingStore: ObservableObject {
     var word: String? {
         switch today {
         case 1: return "Drained"
-        case 2: return "Running low"
+        case 2: return "Tired"
         case 3: return "Steady"
         case 4: return "Good"
         case 5: return "Great"

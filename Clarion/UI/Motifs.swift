@@ -12,6 +12,12 @@ struct ScoreDial: View {
 
     @State private var progress: CGFloat = 0
     @State private var shownValue: Int = 0
+    /// Run the intro count-up ONCE per view lifetime. Without this, TabView re-fires
+    /// `.onAppear` on every return and the dial redraws 0→score — the "glitchy reload."
+    @State private var didAnimate = false
+    /// Generation token so a re-animation cancels the previous run's queued closures.
+    @State private var animGen = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var target: CGFloat { CGFloat(score ?? 0) / 100 }
 
@@ -49,17 +55,26 @@ struct ScoreDial: View {
             }
         }
         .frame(width: size, height: size)
-        .onAppear { animateIn() }
+        .onAppear { guard !didAnimate else { return }; didAnimate = true; animateIn() }
         .onChange(of: score) { _, _ in animateIn() }
     }
 
     private func animateIn() {
+        animGen &+= 1
+        let gen = animGen
+        // Reduce Motion: snap to the final state, no arc sweep or count-up.
+        if reduceMotion {
+            progress = target
+            shownValue = score ?? 0
+            return
+        }
         progress = 0
         withAnimation(.easeOut(duration: 1.4)) { progress = target }
         guard let score else { shownValue = 0; return }
         let steps = 36
         for i in 0...steps {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * (1.2 / Double(steps))) {
+                guard gen == animGen else { return } // a newer run superseded this one
                 let t = Double(i) / Double(steps)
                 shownValue = Int((1 - pow(1 - t, 3)) * Double(score))
             }

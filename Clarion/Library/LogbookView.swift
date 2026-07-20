@@ -18,7 +18,7 @@ struct LogbookView: View {
         ScrollView {
             switch store.state {
             case .loading:
-                ProgressView().padding(.top, 80)
+                ClarionLoadingView()
             case .error(let m):
                 errorState(m)
             case .ready:
