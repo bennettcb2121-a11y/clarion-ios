@@ -61,6 +61,8 @@ struct AskClarionSheet: View {
                         .foregroundStyle(Color.ink3)
                         .padding(8)
                         .background(Color.surface2, in: Circle())
+                        .frame(width: 44, height: 44)   // 44pt hit target
+                        .contentShape(Circle())
                 }
                 .buttonStyle(PressableStyle(haptic: false))
                 .accessibilityLabel("Close")
@@ -224,6 +226,8 @@ struct AskClarionSheet: View {
                         LinearGradient(colors: [Color.forestBright, Color.forest], startPoint: .top, endPoint: .bottom),
                         in: Circle()
                     )
+                    .frame(width: 44, height: 44)   // 44pt hit target; visual stays 38
+                    .contentShape(Circle())
             }
             .buttonStyle(PressableStyle(haptic: false))
             .disabled(store.thinking || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
