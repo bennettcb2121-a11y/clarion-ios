@@ -167,6 +167,14 @@ struct WorkoutsCard: View {
         "hike": "figure.hiking", "row": "figure.rower",
     ]
 
+    /// "52m · 5:24 /mi · 148 bpm" — duration, the sport's own metric, then heart rate.
+    private func subtitle(_ w: WearableWorkout) -> String {
+        var parts = ["\(Int(w.durationMin))m"]
+        if let m = w.primaryMetric(imperial: unitsImperial) { parts.append(m.value) }
+        if let hr = w.avgHeartRate { parts.append("\(Int(hr)) bpm") }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(workouts.enumerated()), id: \.element.id) { i, w in
@@ -183,7 +191,7 @@ struct WorkoutsCard: View {
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
                         if let km = w.distanceKm { Text(UnitsMath.distanceString(km: km, imperial: unitsImperial)).font(.clarionData(13)).foregroundStyle(Color.ink) }
-                        Text("\(Int(w.durationMin))m · \(w.avgHeartRate.map { "\(Int($0)) bpm" } ?? "—")")
+                        Text(subtitle(w))
                             .font(.clarionData(11.5)).foregroundStyle(Color.ink3)
                     }
                 }

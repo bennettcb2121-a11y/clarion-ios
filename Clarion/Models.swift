@@ -42,6 +42,38 @@ struct WearableWorkout: Codable {
     var provider: String?
 }
 
+extension WearableWorkout {
+    /// Recorded average pace, or one derived from distance ÷ duration.
+    var derivedPaceSecPerKm: Double? {
+        if let p = avgPaceSecPerKm, p > 0 { return p }
+        guard let km = distanceKm, km > 0, durationMin > 0 else { return nil }
+        return (durationMin * 60) / km
+    }
+
+    /// The intensity metric the sport is actually measured in, as (value, label). Cyclists read
+    /// speed, runners/walkers pace, swimmers a /100m split, rowers a /500m split — a running pace
+    /// on a bike ride is meaningless. `nil` when there's no distance to work from (e.g. strength).
+    func primaryMetric(imperial: Bool) -> (value: String, label: String)? {
+        switch type {
+        case "ride":
+            if let pace = avgPaceSecPerKm, pace > 0 {
+                return (UnitsMath.speedString(secPerKm: pace, imperial: imperial), "SPEED")
+            }
+            guard let km = distanceKm, km > 0, durationMin > 0 else { return nil }
+            return (UnitsMath.speedString(km: km, minutes: durationMin, imperial: imperial), "SPEED")
+        case "swim":
+            guard let pace = derivedPaceSecPerKm else { return nil }
+            return (UnitsMath.pacePer100m(secPerKm: pace), "PACE")
+        case "row":
+            guard let pace = derivedPaceSecPerKm else { return nil }
+            return (UnitsMath.pacePer500m(secPerKm: pace), "SPLIT")
+        default: // run, walk, hike
+            guard let pace = derivedPaceSecPerKm else { return nil }
+            return (UnitsMath.paceString(secPerKm: pace, imperial: imperial), "PACE")
+        }
+    }
+}
+
 struct IngestPayload: Codable {
     var provider: String
     var clientVersion: String
