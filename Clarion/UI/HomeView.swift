@@ -209,6 +209,14 @@ struct HomeView: View {
                 await requestHealthAccess()
             }
         }
+        .onChange(of: sync.status) { _, newStatus in
+            // A sync just uploaded fresh HealthKit days — refetch the server snapshot so
+            // every surface (metric row, ring, Vitals) reflects the merged truth, not a
+            // local tail that disagrees with the server until the next manual refresh.
+            if case .done(let d, let w, _) = newStatus, d + w > 0 {
+                Task { await vitals.load() }
+            }
+        }
         .onChange(of: tab) { _, newTab in
             // The next-step ladder's "viewed" markers — visiting the tab settles the step.
             if newTab == 2 { reportViewed = true }
@@ -565,10 +573,19 @@ struct HomeView: View {
     // MARK: - Metric chip row (persona-adaptive — which three numbers lead)
 
     private struct HomeMetric: Identifiable {
+        struct Delta {
+            let text: String
+            let good: Bool
+        }
+
         let id: String
         let value: String
         let unit: String?
         let caption: String
+        /// Chronological real readings behind the number (last ~14 uploads). Empty = no line.
+        var series: [Double] = []
+        /// Latest reading vs its 7-day baseline — nil when the move is inside noise.
+        var delta: Delta? = nil
     }
 
     @ViewBuilder
@@ -600,12 +617,27 @@ struct HomeView: View {
                         .foregroundStyle(Color.ink3)
                 }
             }
-            Text(m.caption.uppercased())
-                .font(.clarionLabel(10))
-                .tracking(0.12 * 10)
-                .foregroundStyle(Color.ink3)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            // The reading's own recent history — real points only; hidden below 3.
+            if m.series.count >= 3 {
+                TinySparkline(values: m.series)
+                    .frame(height: 16)
+                    .padding(.vertical, 1)
+            }
+            HStack(spacing: 3) {
+                Text(m.caption.uppercased())
+                    .font(.clarionLabel(10))
+                    .tracking(0.12 * 10)
+                    .foregroundStyle(Color.ink3)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 2)
+                if let d = m.delta {
+                    Text(d.text)
+                        .font(.clarionData(10))
+                        .foregroundStyle(d.good ? Color.forest : Color.amber)
+                        .lineLimit(1)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Brand.s3)
@@ -641,26 +673,44 @@ struct HomeView: View {
         }
     }
 
+    /// Each level's own quiet tone — a drained→great progression the eye reads before the
+    /// words do (clay → amber → neutral → forest), used for the dot and the selected wash.
+    private func feelingTone(_ level: Int) -> Color {
+        switch level {
+        case 1: return .clay
+        case 2: return .amber
+        case 3: return .ink3
+        case 4: return .forestBright
+        default: return .forest
+        }
+    }
+
     private func feelingOption(_ level: Int, _ label: String) -> some View {
         let selected = feeling.today == level
+        let tone = feelingTone(level)
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { feeling.set(level) }
         } label: {
-            Text(label)
-                .font(.clarionLabel(11))
-                .foregroundStyle(selected ? Color.forestInk : Color.ink3)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Brand.s2 + 2)
-                .background(
-                    RoundedRectangle(cornerRadius: Brand.rSM)
-                        .fill(selected ? Color.forestWash : Color.ink.opacity(0.045))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Brand.rSM)
-                        .stroke(selected ? Color.forest.opacity(0.45) : Color.clear, lineWidth: 1)
-                )
+            VStack(spacing: 4) {
+                Circle()
+                    .fill(tone.opacity(selected ? 1 : 0.4))
+                    .frame(width: 5, height: 5)
+                Text(label)
+                    .font(.clarionLabel(11))
+                    .foregroundStyle(selected ? Color.ink : Color.ink3)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Brand.s2 + 2)
+            .background(
+                RoundedRectangle(cornerRadius: Brand.rSM)
+                    .fill(selected ? tone.opacity(0.13) : Color.ink.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Brand.rSM)
+                    .stroke(selected ? tone.opacity(0.55) : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(PressableStyle())
     }
@@ -770,7 +820,8 @@ struct HomeView: View {
     /// last known numbers, so it has to say when they aren't from today — same honesty rule the
     /// Vitals tab applies with its "as of Jul 13" chip.
     private var metricsReadingAgeDays: Int? {
-        let source = sync.lastSummary.isEmpty ? (briefWindow?.daily ?? []) : sync.lastSummary
+        // Same window the brief + Vitals read (server snapshot first) — one truth, one age.
+        let source = briefWindow?.daily ?? []
         guard !source.isEmpty else { return nil }
         return MorningBrief.latestRealReadingAgeDays(source, dateKey: ProtocolLogStore.todayKey())
     }
@@ -793,29 +844,68 @@ struct HomeView: View {
     /// (VO₂max, overnight temp) leads when it's synced and gracefully falls back to the general
     /// set otherwise. Same wearable window the brief reads; Score comes from the report.
     private var homeMetrics: [HomeMetric] {
-        let source = sync.lastSummary.isEmpty ? (briefWindow?.daily ?? []) : sync.lastSummary
+        // The SAME window the brief, the ring, and the Vitals tab read (server snapshot
+        // first, fresh local sync only until it arrives). Home previously preferred the
+        // local 3-day HealthKit tail, so it could show HRV 72 while Vitals showed the
+        // snapshot's 40 — two "truths" on adjacent tabs. One source, one number.
+        let source = briefWindow?.daily ?? []
 
         // The daily array runs THROUGH TODAY and its tail rows are EMPTY on days the device
         // hasn't uploaded. Reading `source.last` therefore grabbed a blank row and hid every
-        // number the user actually has — Home showed only "86 SCORE" while the Vitals tab
-        // showed "HRV 51 · as of Jul 13" off the same snapshot. Take each metric's most recent
-        // real value instead (mirrors latestRealReadingAgeDays' backwards scan).
+        // number the user actually has. Take each metric's most recent real value instead
+        // (mirrors latestRealReadingAgeDays' backwards scan).
         func latest<T>(_ pick: (WearableDailyMetrics) -> T?) -> T? {
             for d in source.reversed() { if let v = pick(d) { return v } }
             return nil
         }
+        /// Chronological REAL readings in the window (nil days skipped) — the sparkline input.
+        func realSeries(_ pick: (WearableDailyMetrics) -> Double?) -> [Double] {
+            Array(source.compactMap(pick).suffix(14))
+        }
+        /// Latest real reading vs the mean of up to 7 prior real readings. Needs ≥3 real
+        /// points; below that there is no honest baseline, so no arrow is shown at all.
+        func shift(_ series: [Double]) -> (diff: Double, base: Double)? {
+            guard series.count >= 3, let last = series.last else { return nil }
+            let prior = series.dropLast().suffix(7)
+            guard prior.count >= 2 else { return nil }
+            let base = prior.reduce(0, +) / Double(prior.count)
+            return (last - base, base)
+        }
 
         func hrv() -> HomeMetric? {
-            latest { $0.hrv }.map { HomeMetric(id: "hrv", value: "\(Int($0))", unit: "ms", caption: "HRV") }
+            latest { $0.hrv }.map { v in
+                var m = HomeMetric(id: "hrv", value: "\(Int(v))", unit: "ms", caption: "HRV", series: realSeries { $0.hrv })
+                if let s = shift(m.series), abs(s.diff) / max(s.base, 1) >= 0.03 {
+                    let pct = Int((abs(s.diff) / max(s.base, 1) * 100).rounded())
+                    m.delta = .init(text: "\(s.diff > 0 ? "▲" : "▼") \(pct)%", good: s.diff > 0)
+                }
+                return m
+            }
         }
         func sleep() -> HomeMetric? {
-            latest { $0.sleepDurationMin }.map { HomeMetric(id: "sleep", value: formatMinutes($0), unit: nil, caption: "Sleep") }
+            latest { $0.nightSleepMin }.map { v in
+                var m = HomeMetric(id: "sleep", value: formatMinutes(v), unit: nil, caption: "Sleep", series: realSeries { $0.nightSleepMin })
+                if let s = shift(m.series), abs(s.diff) >= 15 {
+                    let mins = Int(abs(s.diff).rounded())
+                    let text = mins < 95 ? "\(mins)m" : String(format: "%.1fh", Double(mins) / 60)
+                    m.delta = .init(text: "\(s.diff > 0 ? "▲" : "▼") \(text)", good: s.diff > 0)
+                }
+                return m
+            }
         }
         func vo2() -> HomeMetric? {
-            latest { $0.vo2Max }.map { HomeMetric(id: "vo2max", value: String(format: "%.1f", $0), unit: nil, caption: "VO₂max") }
+            latest { $0.vo2Max }.map { v in
+                var m = HomeMetric(id: "vo2max", value: String(format: "%.1f", v), unit: nil, caption: "VO₂max", series: realSeries { $0.vo2Max })
+                if let s = shift(m.series), abs(s.diff) >= 0.2 {
+                    m.delta = .init(text: String(format: "%@ %.1f", s.diff > 0 ? "▲" : "▼", abs(s.diff)), good: s.diff > 0)
+                }
+                return m
+            }
         }
         func temp() -> HomeMetric? {
-            latest { $0.skinTempDeviationC }.map { HomeMetric(id: "temp", value: String(format: "%+.2f", $0), unit: "°C", caption: "Temp") }
+            latest { $0.skinTempDeviationC }.map {
+                HomeMetric(id: "temp", value: String(format: "%+.2f", $0), unit: "°C", caption: "Temp", series: realSeries { $0.skinTempDeviationC })
+            }
         }
         func scoreMetric() -> HomeMetric? {
             guard let results = reportData?.results, !results.isEmpty else { return nil }
@@ -954,8 +1044,9 @@ struct HomeView: View {
                         }
                         if let next = remaining.first {
                             HStack(spacing: Brand.s3) {
+                                SupplementGlyph(form: .infer(name: next.name, dose: next.dose))
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(next.name)
+                                    Text(next.coherentName)
                                         .font(.clarionDisplay(16))
                                         .foregroundStyle(Color.ink)
                                         .lineLimit(1)

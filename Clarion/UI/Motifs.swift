@@ -243,3 +243,51 @@ struct MoneyBar: View {
         .frame(height: 12)
     }
 }
+
+/// A tiny, honest sparkline: chronological REAL readings only — thin line, soft area fade,
+/// endpoint dot. The view fabricates nothing: callers hide it below 3 real points.
+struct TinySparkline: View {
+    let values: [Double]
+    var tint: Color = .forest
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let lo = values.min() ?? 0
+            let hi = values.max() ?? 1
+            let span = max(hi - lo, 0.0001)
+            let pad: CGFloat = 3 // keep the endpoint dot inside the frame
+            let pts: [CGPoint] = values.enumerated().map { i, v in
+                CGPoint(
+                    x: pad + (w - pad * 2) * (values.count <= 1 ? 0.5 : CGFloat(i) / CGFloat(values.count - 1)),
+                    y: pad + (h - pad * 2) * CGFloat(1 - (v - lo) / span)
+                )
+            }
+            ZStack {
+                if pts.count >= 2 {
+                    Path { p in
+                        p.move(to: CGPoint(x: pts[0].x, y: h))
+                        pts.forEach { p.addLine(to: $0) }
+                        p.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: h))
+                        p.closeSubpath()
+                    }
+                    .fill(LinearGradient(colors: [tint.opacity(0.16), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
+
+                    Path { p in
+                        p.move(to: pts[0])
+                        pts.dropFirst().forEach { p.addLine(to: $0) }
+                    }
+                    .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+                if let last = pts.last {
+                    Circle()
+                        .fill(Color.forestBright)
+                        .frame(width: 5, height: 5)
+                        .position(last)
+                }
+            }
+        }
+        .accessibilityHidden(true) // decorative — the numeral + delta carry the information
+    }
+}

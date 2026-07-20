@@ -42,6 +42,17 @@ struct WearableWorkout: Codable {
     var provider: String?
 }
 
+extension WearableDailyMetrics {
+    /// Sleep only when it's plausibly a night (≥1h). Wearables emit sub-hour fragments —
+    /// sensor blips, naps straddling midnight — and a "2m" night must never headline as
+    /// last night's sleep or poison a trend. Displays and trends read this; raw
+    /// sleepDurationMin stays untouched for ingest fidelity.
+    var nightSleepMin: Double? {
+        guard let m = sleepDurationMin, m >= 60 else { return nil }
+        return m
+    }
+}
+
 extension WearableWorkout {
     /// Recorded average pace, or one derived from distance ÷ duration.
     var derivedPaceSecPerKm: Double? {

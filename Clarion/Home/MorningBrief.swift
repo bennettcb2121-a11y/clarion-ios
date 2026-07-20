@@ -207,7 +207,8 @@ struct MorningBrief: Equatable {
         for d in daily {
             let age = today - daysSinceEpoch(d.date)
             guard age >= 0, age < 7 else { continue }
-            if let v = d.sleepDurationMin, v.isFinite { vals.append(v) }
+            // nightSleepMin — a sub-hour fragment averaged in would tank the "avg sleep" story.
+            if let v = d.nightSleepMin, v.isFinite { vals.append(v) }
         }
         guard vals.count >= 2 else { return nil }
         return vals.reduce(0, +) / Double(vals.count)
@@ -230,7 +231,7 @@ struct MorningBrief: Equatable {
         if let daily = input.daily, fresh {
             let hrv = metricTrend(daily, \.hrv)
             let rhr = metricTrend(daily, \.restingHeartRate)
-            let sleepTrend = metricTrend(daily, \.sleepDurationMin)
+            let sleepTrend = metricTrend(daily, \.nightSleepMin)
             let readinessTrend = metricTrend(daily, \.readinessScore)
             let readiness = freshReadiness(daily, dateKey: input.dateKey)
             let sessions = workoutsInLastWeek(input.workouts, dateKey: input.dateKey)

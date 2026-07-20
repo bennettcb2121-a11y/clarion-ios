@@ -261,6 +261,8 @@ struct DoseRow: View {
                 }
                 .animation(.spring(response: 0.32, dampingFraction: 0.65), value: done)
 
+                SupplementGlyph(form: .infer(name: item.name, dose: item.dose), done: done)
+
                 Text(item.coherentName)
                     .font(.clarionDisplay(15))
                     .foregroundStyle(done ? Color.ink3 : Color.ink)

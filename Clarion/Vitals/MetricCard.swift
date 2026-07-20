@@ -34,7 +34,8 @@ struct MetricCard: View {
                     Text(latest.map { format($0) } ?? "—")
                         .font(.clarionData(26))
                         .foregroundStyle(Color.ink)
-                    if !metric.unit.isEmpty {
+                    if !metric.unit.isEmpty && metric.id != "sleep_quality" {
+                        // sleep's value embeds its units ("6h 48m") — a trailing "min" would double up
                         Text(metric.unit).font(.clarionData(11)).foregroundStyle(Color.ink3)
                     }
                 }
@@ -43,8 +44,12 @@ struct MetricCard: View {
             if series.count >= 2 {
                 chart
                     .frame(height: isTrendVariant ? 92 : 64)
+                    .clipped() // marks may draw outside their frame — never let the band flood the card
                 HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 2).fill(Color.forestWash).frame(width: 16, height: 8)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.forest.opacity(0.10))
+                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.forest.opacity(0.25), lineWidth: 0.8))
+                        .frame(width: 16, height: 8)
                     Text("your usual range").font(.clarionBody(11)).foregroundStyle(Color.ink3)
                 }
             }
@@ -70,11 +75,13 @@ struct MetricCard: View {
         let pts = Array(series.enumerated())
         let b = band
         return Chart {
+            // "Your usual range" band — forest at fixed opacity (forestWash alone vanished
+            // into the white card; the legend swatch looked like an empty box).
             RectangleMark(
                 xStart: .value("s", 0), xEnd: .value("e", series.count - 1),
                 yStart: .value("lo", b.lo), yEnd: .value("hi", b.hi)
             )
-            .foregroundStyle(Color.forestWash.opacity(0.6))
+            .foregroundStyle(Color.forest.opacity(0.09))
 
             // Curve-following gradient fill under the line (not a flat block).
             ForEach(pts, id: \.offset) { i, v in
@@ -82,7 +89,7 @@ struct MetricCard: View {
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [Color.forest.opacity(0.16), Color.forest.opacity(0.0)],
+                            colors: [Color.forest.opacity(0.22), Color.forest.opacity(0.0)],
                             startPoint: .top, endPoint: .bottom
                         )
                     )
@@ -94,14 +101,23 @@ struct MetricCard: View {
                     .lineStyle(StrokeStyle(lineWidth: 2.5))
             }
             if let last = series.last {
+                // Ringed endpoint — a paper core inside the bright dot reads "today".
                 PointMark(x: .value("i", series.count - 1), y: .value("v", last))
-                    .symbolSize(90)
+                    .symbolSize(110)
                     .foregroundStyle(Color.forestBright)
+                PointMark(x: .value("i", series.count - 1), y: .value("v", last))
+                    .symbolSize(34)
+                    .foregroundStyle(Color.paper)
             }
         }
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
+        // A hair of x-headroom so the today-dot sits fully inside the (now clipped) plot.
+        .chartXScale(domain: -0.35 ... Double(series.count - 1) + 0.35)
         .chartYScale(domain: (series.min() ?? 0) * 0.92 ... (series.max() ?? 1) * 1.08)
+        // Clip marks to the plot — the band RectangleMark was escaping the 64pt frame and
+        // flooding the card below the chart (legend + caption sat on a pale green field).
+        .chartPlotStyle { $0.clipShape(Rectangle()) }
     }
 
     // MARK: - Trend
@@ -128,6 +144,11 @@ struct MetricCard: View {
 
     private func format(_ v: Double) -> String {
         if metric.id == "steps_energy" { return "\(Int(v))" }
+        if metric.id == "sleep_quality" {
+            // "6h 48m", not "408 min" — nights are read in hours.
+            let h = Int(v) / 60, m = Int(v) % 60
+            return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        }
         return v == v.rounded() ? "\(Int(v))" : String(format: "%.1f", v)
     }
 }

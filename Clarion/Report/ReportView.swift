@@ -161,21 +161,28 @@ struct ReportView: View {
                         .minimumScaleFactor(0.8)
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.paperDim).frame(height: 6)
+                            Capsule().fill(Color.ink.opacity(0.055)).frame(height: 8)
                             Capsule()
                                 .fill(
                                     LinearGradient(colors: [Color.forestBright, Color.forest], startPoint: .leading, endPoint: .trailing)
                                 )
-                                .frame(width: geo.size.width * CGFloat(row.score) / 100, height: 6)
+                                .frame(width: max(8, geo.size.width * CGFloat(row.score) / 100), height: 8)
+                            // Endpoint dot — the "measured here" finish that keeps an 8pt
+                            // bar from reading as a plain progress fill.
+                            Circle()
+                                .fill(Color.paper)
+                                .frame(width: 3.5, height: 3.5)
+                                .offset(x: max(8, geo.size.width * CGFloat(row.score) / 100) - 6.5)
                         }
                         .frame(maxHeight: .infinity, alignment: .center)
                     }
                     Text("\(row.score)")
                         .font(.clarionData(13))
+                        .monospacedDigit()
                         .foregroundStyle(row.score >= 90 ? Color.forest : (row.score >= 70 ? Color.ink2 : Color.amber))
                         .frame(width: 32, alignment: .trailing)
                 }
-                .frame(height: 20)
+                .frame(height: 24)
             }
         }
         .padding(Brand.s5)

@@ -87,7 +87,8 @@ struct VitalsMetric: Identifiable {
         "respiratory_rate": .init(id: "respiratory_rate", title: "Respiratory rate", unit: "br/min", keyPath: \.respiratoryRate, higherIsBetter: false, caption: "Overnight breathing rate"),
         "steps_energy": .init(id: "steps_energy", title: "Activity", unit: "steps", keyPath: \.steps, higherIsBetter: true, caption: "Steps today"),
         "skin_temp": .init(id: "skin_temp", title: "Overnight body temperature", unit: "°C", keyPath: \.skinTempDeviationC, higherIsBetter: false, caption: "Deviation from your baseline"),
-        "sleep_quality": .init(id: "sleep_quality", title: "Sleep", unit: "min", keyPath: \.sleepDurationMin, higherIsBetter: true, caption: "Nightly duration over the window"),
+        // nightSleepMin, not raw sleepDurationMin — sub-hour fragments must not chart as nights.
+        "sleep_quality": .init(id: "sleep_quality", title: "Sleep", unit: "min", keyPath: \.nightSleepMin, higherIsBetter: true, caption: "Nightly duration over the window"),
         "spo2": .init(id: "spo2", title: "Blood oxygen", unit: "%", keyPath: \.spo2Pct, higherIsBetter: true, caption: "Average overnight SpO₂"),
         "total_energy": .init(id: "total_energy", title: "Energy burn", unit: "kcal", keyPath: \.totalEnergyKcal, higherIsBetter: true, caption: "Total daily energy expenditure"),
     ]
