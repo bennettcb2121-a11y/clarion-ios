@@ -108,12 +108,16 @@ struct HomeView: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    // Quieter against the editorial hero: one forest accent (chat), the
+                    // utility pair recede to ink-3, all at a lighter 15pt weight. Hit
+                    // targets stay the system's 44pt toolbar standard.
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button {
                             Haptics.tap()
                             showChat = true
                         } label: {
-                            Image(systemName: "bubble.left.and.text.bubble.right")
+                            Image(systemName: "text.bubble")
+                                .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(Color.forest)
                         }
                         .accessibilityLabel("Ask Clarion")
@@ -122,7 +126,8 @@ struct HomeView: View {
                             libraryRoute = .hub
                         } label: {
                             Image(systemName: "books.vertical")
-                                .foregroundStyle(Color.ink2)
+                                .font(.system(size: 15, weight: .regular))
+                                .foregroundStyle(Color.ink3)
                         }
                         .accessibilityLabel("Library")
                         Button {
@@ -130,7 +135,8 @@ struct HomeView: View {
                             showSettings = true
                         } label: {
                             Image(systemName: "gearshape")
-                                .foregroundStyle(Color.ink2)
+                                .font(.system(size: 15, weight: .regular))
+                                .foregroundStyle(Color.ink3)
                         }
                         .accessibilityLabel("Settings")
                     }
@@ -1069,6 +1075,8 @@ struct HomeView: View {
                                             LinearGradient(colors: [Color.forestBright, Color.forest], startPoint: .top, endPoint: .bottom),
                                             in: Capsule()
                                         )
+                                        .frame(minHeight: 44) // 44pt hit target; visual capsule stays ~31pt
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(PressableStyle(haptic: false))
                             }

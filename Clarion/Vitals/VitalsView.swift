@@ -111,7 +111,7 @@ struct VitalsView: View {
         let readiness = WearableDailyMetrics.latest(snap.daily, \.readinessScore).map { Int($0) }
         return VStack(spacing: 16) {
             ReadinessRing(score: readiness)
-            Text(coachingLine(readiness, stale: snap.isStale))
+            Text(coachingLine(readiness, stale: snap.isStale, hrvLow: MorningBrief.hrvWellBelowBaseline(snap.daily)))
                 .font(.clarionDisplayItalic(17))
                 .foregroundStyle(Color.ink)
                 .multilineTextAlignment(.center)
@@ -142,9 +142,12 @@ struct VitalsView: View {
         .shadow(color: Color.forest.opacity(0.08), radius: 16, y: 6)
     }
 
-    private func coachingLine(_ score: Int?, stale: Bool) -> String {
+    private func coachingLine(_ score: Int?, stale: Bool, hrvLow: Bool = false) -> String {
         guard let score else { return "We'll show your recovery once your ring syncs tonight's data." }
         if stale { return "Showing your last available reading — sync your device for today's picture." }
+        // The score can look fine while HRV has cratered vs its own baseline (the score is
+        // the provider's; the baseline check is ours). Never cheer against our own data.
+        if hrvLow && score >= 65 { return "Readiness looks fine, but HRV is well below your usual — favor easy volume today." }
         if score >= 80 { return "You're well-recovered — a strong day to push." }
         if score >= 65 { return "Solidly recovered — train as planned." }
         if score >= 50 { return "Only part-recovered — keep it moderate today." }

@@ -117,6 +117,20 @@ struct MorningBrief: Equatable {
     }
 
     /// Matches the vitals hero's coaching bands (80 / 65 / 50).
+    /// True when the newest real HRV sits well below its own recent baseline (<75% of the
+    /// mean of up to 14 prior readings; needs ≥4 real points). Oura's readiness score can
+    /// say "well recovered" while HRV has cratered — surfaces (the hero word, the vitals
+    /// coaching line) hedge instead of contradicting the number sitting next to them.
+    static func hrvWellBelowBaseline(_ daily: [WearableDailyMetrics]?) -> Bool {
+        guard let daily else { return false }
+        let vals = daily.compactMap { $0.hrv }
+        guard vals.count >= 4, let last = vals.last else { return false }
+        let prior = vals.dropLast().suffix(14)
+        guard prior.count >= 3 else { return false }
+        let mean = prior.reduce(0, +) / Double(prior.count)
+        return mean > 0 && last < 0.75 * mean
+    }
+
     static func readinessWordFor(_ score: Int?) -> String? {
         guard let score else { return nil }
         if score >= 80 { return "Well-recovered" }
@@ -396,9 +410,13 @@ struct MorningBrief: Equatable {
             protocolLine = "\(input.protocolState.done) of \(input.protocolState.total) logged today\(streakPart)"
         }
 
+        // An upbeat tier word next to a cratered HRV reads as the app not looking at its
+        // own data — hedge the word when the two disagree.
+        let hedged = fresh && (readiness ?? 0) >= 65 && hrvWellBelowBaseline(input.daily)
+
         return MorningBrief(
             readiness: readiness,
-            readinessWord: readinessWordFor(readiness),
+            readinessWord: hedged ? "Mixed — HRV below usual" : readinessWordFor(readiness),
             wearableDay: fresh,
             insight: insight,
             protocolLine: protocolLine

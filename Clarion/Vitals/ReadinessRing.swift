@@ -13,12 +13,26 @@ struct ReadinessRing: View {
     /// reset the number to 0 and re-counted — the visible "glitchy reload" on the Vitals tab.
     @State private var didAnimate = false
     @State private var animGen = 0
+    /// Ambient breath behind the ring — the one living element on the tab.
+    @State private var breathing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var target: CGFloat { CGFloat(score ?? 0) / 100 }
 
     var body: some View {
         ZStack {
+            // A slow soft glow (3.6s in/out) gives the hero quiet life — opacity only,
+            // skipped entirely under Reduce Motion and when there's no score yet.
+            if score != nil && !reduceMotion {
+                Circle()
+                    .fill(Color.forest.opacity(breathing ? 0.10 : 0.04))
+                    .blur(radius: 18)
+                    .padding(6)
+                    .animation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true), value: breathing)
+                    .onAppear { breathing = true }
+                    .allowsHitTesting(false)
+            }
+
             Circle()
                 .stroke(Color.paperDim, lineWidth: 11)
 
