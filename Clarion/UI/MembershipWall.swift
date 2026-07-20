@@ -94,6 +94,17 @@ struct MembershipWall: View {
                 .foregroundStyle(Color.ink4)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Apple 3.1.2 — Terms of Use (EULA) + Privacy Policy must be reachable
+            // from the purchase surface itself, not only buried in Settings.
+            HStack(spacing: Brand.s3) {
+                Link("Terms of Use", destination: Config.apiBase.appendingPathComponent("terms"))
+                Text("·").foregroundStyle(Color.ink4)
+                Link("Privacy Policy", destination: Config.apiBase.appendingPathComponent("legal/privacy"))
+            }
+            .font(.clarionBody(11))
+            .foregroundStyle(Color.forest)
+            .padding(.top, 2)
         }
         .padding(Brand.s6)
         .frame(maxWidth: .infinity)
