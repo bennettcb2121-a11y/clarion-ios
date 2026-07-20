@@ -38,7 +38,12 @@ struct SignInView: View {
 
                     Button { Task { await oauth(.google) } } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: "g.circle.fill")
+                            // Google's official "G" (their hosted branding asset, unmodified) —
+                            // the guidelines forbid recreating or recoloring the mark.
+                            Image("GoogleG")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
                             Text("Continue with Google").font(.clarionLabel(15))
                         }
                         .frame(maxWidth: .infinity)
