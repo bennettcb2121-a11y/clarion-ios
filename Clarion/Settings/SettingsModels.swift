@@ -171,4 +171,29 @@ enum UnitsMath {
     static func kg(fromPounds lb: Double) -> Double {
         (lb / 2.205 * 10).rounded() / 10
     }
+
+    // MARK: - Distance & pace (canonical storage is metric: km + sec/km)
+
+    static let kmPerMile = 1.609344
+
+    /// A canonical-km distance split into (value, unit) under the imperial pref,
+    /// so a view can size the number and unit separately. "12.4" · "mi" / "19.9" · "km".
+    static func distanceParts(km: Double, imperial: Bool) -> (value: String, unit: String) {
+        imperial
+            ? (String(format: "%.1f", km / kmPerMile), "mi")
+            : (String(format: "%.1f", km), "km")
+    }
+
+    /// One-string distance, e.g. "12.4 mi" / "19.9 km".
+    static func distanceString(km: Double, imperial: Bool) -> String {
+        let (v, u) = distanceParts(km: km, imperial: imperial)
+        return "\(v) \(u)"
+    }
+
+    /// Seconds-per-km → "M:SS /mi" or "M:SS /km" in the user's unit.
+    static func paceString(secPerKm: Double, imperial: Bool) -> String {
+        let perUnit = imperial ? secPerKm * kmPerMile : secPerKm
+        let s = Int(perUnit.rounded())
+        return "\(s / 60):\(String(format: "%02d", s % 60)) /\(imperial ? "mi" : "km")"
+    }
 }

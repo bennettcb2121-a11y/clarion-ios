@@ -19,6 +19,8 @@ struct HomeView: View {
     /// own, they disagreed (tab: readiness 64 / HRV 51; Home: "New day." and no metric row).
     @ObservedObject var vitals: VitalsStore
     @AppStorage("clarion_health_authorized") private var healthAuthorized = false
+    // App-wide distance/pace units (shared with Settings' body-units toggle). Default miles.
+    @AppStorage("clarion_units_imperial") private var unitsImperial = true
     /// "Viewed" markers for the nudge slot's next-step ladder (web: HOME_*_VIEWED_KEY).
     @AppStorage("clarion_home_report_viewed") private var reportViewed = false
     @AppStorage("clarion_home_plan_viewed") private var planViewed = false
@@ -683,8 +685,9 @@ struct HomeView: View {
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         if let km = w.distanceKm {
-                            Text(String(format: "%.1f", km)).font(.clarionDisplay(28)).foregroundStyle(Color.ink)
-                            Text("km").font(.clarionBody(14)).foregroundStyle(Color.ink3)
+                            let d = UnitsMath.distanceParts(km: km, imperial: unitsImperial)
+                            Text(d.value).font(.clarionDisplay(28)).foregroundStyle(Color.ink)
+                            Text(d.unit).font(.clarionBody(14)).foregroundStyle(Color.ink3)
                         } else {
                             Text(formatMinutes(w.durationMin)).font(.clarionDisplay(28)).foregroundStyle(Color.ink)
                         }
@@ -762,10 +765,9 @@ struct HomeView: View {
         }
     }
 
-    /// Seconds-per-km → "M:SS /km".
+    /// Seconds-per-km → "M:SS /mi" or "M:SS /km" in the user's preferred unit.
     private func formatPace(_ secPerKm: Double) -> String {
-        let s = Int(secPerKm.rounded())
-        return "\(s / 60):\(String(format: "%02d", s % 60)) /km"
+        UnitsMath.paceString(secPerKm: secPerKm, imperial: unitsImperial)
     }
 
     /// Age in days of the newest REAL wearable reading behind the metric row. The row shows the

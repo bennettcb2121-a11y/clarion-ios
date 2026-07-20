@@ -300,13 +300,13 @@ struct SettingsView: View {
     private var unitsRows: some View {
         VStack(alignment: .leading, spacing: Brand.s3) {
             HStack {
-                Text("Body")
+                Text("Units")
                     .font(.clarionBody(15))
                     .foregroundStyle(Color.ink)
                 Spacer()
                 Picker("Units", selection: $unitsImperial) {
-                    Text("ft · lb").tag(true)
-                    Text("cm · kg").tag(false)
+                    Text("mi · lb").tag(true)
+                    Text("km · kg").tag(false)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 140)

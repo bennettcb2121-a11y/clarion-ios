@@ -159,6 +159,7 @@ struct InsightCard: View {
 
 struct WorkoutsCard: View {
     let workouts: [WearableWorkout]
+    @AppStorage("clarion_units_imperial") private var unitsImperial = true
 
     private let symbols = [
         "run": "figure.run", "ride": "figure.outdoor.cycle", "swim": "figure.pool.swim",
@@ -181,7 +182,7 @@ struct WorkoutsCard: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
-                        if let km = w.distanceKm { Text(String(format: "%.1f km", km)).font(.clarionData(13)).foregroundStyle(Color.ink) }
+                        if let km = w.distanceKm { Text(UnitsMath.distanceString(km: km, imperial: unitsImperial)).font(.clarionData(13)).foregroundStyle(Color.ink) }
                         Text("\(Int(w.durationMin))m · \(w.avgHeartRate.map { "\(Int($0)) bpm" } ?? "—")")
                             .font(.clarionData(11.5)).foregroundStyle(Color.ink3)
                     }
