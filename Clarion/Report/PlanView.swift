@@ -261,7 +261,7 @@ struct DoseRow: View {
                 }
                 .animation(.spring(response: 0.32, dampingFraction: 0.65), value: done)
 
-                Text(item.name)
+                Text(item.coherentName)
                     .font(.clarionDisplay(15))
                     .foregroundStyle(done ? Color.ink3 : Color.ink)
                     .strikethrough(done, color: Color.ink4)
@@ -292,7 +292,7 @@ struct StackCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Brand.s2) {
             HStack(alignment: .firstTextBaseline) {
-                Text(item.name)
+                Text(item.coherentName)
                     .font(.clarionDisplay(17))
                     .foregroundStyle(isCut ? Color.ink3 : Color.ink)
                     .strikethrough(isCut, color: Color.ink4)

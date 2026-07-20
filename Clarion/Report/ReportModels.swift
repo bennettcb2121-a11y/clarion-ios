@@ -145,6 +145,28 @@ struct StackItem: Codable, Identifiable {
         default: return .maintain
         }
     }
+
+    /// The name with a delivery-form word dropped when the dose contradicts it. A saved product
+    /// named "Vitamin C — 1000 mg capsules" recommended as "2 gummies" (the user's gummy
+    /// preference) otherwise renders the self-contradicting "…capsules · 2 gummies". Trusting the
+    /// dose (the thing actually taken) and stripping the stale form word yields "Vitamin C —
+    /// 1000 mg · 2 gummies". Fires only on a real conflict, so "Iron — liquid · 1 tbsp" and plain
+    /// capsule rows are untouched.
+    var coherentName: String {
+        let d = dose.lowercased()
+        let doseIsAltForm = d.contains("gumm") || d.contains("liquid") || d.contains("dropper")
+            || d.contains("drop") || d.contains(" ml") || d.contains("tbsp") || d.contains("tsp")
+            || d.contains("powder") || d.contains("scoop")
+        guard doseIsAltForm else { return name }
+        let stripped = name.replacingOccurrences(
+            of: #"\s*\b(?:capsules?|caps?|tablets?|softgels?|caplets?)\b"#,
+            with: "", options: [.regularExpression, .caseInsensitive])
+        let tidied = stripped
+            .replacingOccurrences(of: #"[\s—–-]+$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return tidied.isEmpty ? name : tidied
+    }
 }
 
 enum StackBucket: Int, CaseIterable {
