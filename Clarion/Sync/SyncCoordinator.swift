@@ -62,6 +62,21 @@ final class SyncCoordinator: ObservableObject {
                 return
             }
 
+            #if targetEnvironment(simulator)
+            // Simulator ingests are for the DEMO account only. A sim signed into a real
+            // user once pushed its SEEDED (fake) HealthKit days into that account's
+            // production data, where the per-field merge overwrote real Oura values
+            // (Jul 2026 — steps climbing +613/day, sleep cycling 420/445/470). The local
+            // UI still gets its summary; the POST is skipped so prod stays clean.
+            if auth.session?.email?.lowercased() != "demo@clarionlabs.tech" {
+                lastSummary = Array(daily.suffix(3))
+                UserDefaults.standard.set(Date(), forKey: Self.lastSyncKey)
+                status = .done(daily: 0, workouts: 0, at: Date())
+                print("[Sync] simulator + non-demo account — skipped ingest POST to protect real data")
+                return
+            }
+            #endif
+
             // Workouts cap matches the server (200/request); chunk the backfill if needed.
             var remainingWorkouts = workouts
             var postedDaily = 0

@@ -597,6 +597,20 @@ struct SettingsView: View {
     private var healthCard: some View {
         section("Health data") {
             VStack(alignment: .leading, spacing: 0) {
+                // Force a HealthKit → Clarion sync and SHOW the outcome. Before this row,
+                // a phone that never uploaded (permission never granted, stale build, silent
+                // failure) just looked like "my watch data isn't in the app" with no clue why.
+                Button {
+                    Haptics.tap()
+                    Task { await sync.sync() }
+                } label: {
+                    linkRow("Sync Apple Health now", system: "arrow.triangle.2.circlepath")
+                }
+                .disabled(sync.status == .syncing)
+                syncStatusLine
+                    .padding(.horizontal, Brand.s4)
+                    .padding(.bottom, Brand.s2)
+                rowDivider
                 Link(destination: URL(string: "x-apple-health://")!) {
                     linkRow("Manage Health permissions", system: "heart.text.square")
                 }
@@ -608,6 +622,36 @@ struct SettingsView: View {
                     .padding(.bottom, Brand.s3)
             }
         }
+    }
+
+    /// The sync outcome in plain words — synced N days, the actual error, or when it last ran.
+    @ViewBuilder
+    private var syncStatusLine: some View {
+        switch sync.status {
+        case .syncing:
+            HStack(spacing: Brand.s2) {
+                ProgressView().controlSize(.mini)
+                Text("Syncing…").font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
+            }
+        case .done(let d, let w, let at):
+            Text("Synced \(d) day\(d == 1 ? "" : "s") · \(w) workout\(w == 1 ? "" : "s") · \(Self.timeString(at))")
+                .font(.clarionBody(12.5)).foregroundStyle(Color.forest)
+        case .failed(let message):
+            Text(message).font(.clarionBody(12.5)).foregroundStyle(Color.clay)
+                .fixedSize(horizontal: false, vertical: true)
+        case .idle:
+            if let last = sync.lastSyncedAt {
+                Text("Last synced \(Self.timeString(last))")
+                    .font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
+            } else {
+                Text("Not synced yet on this device.")
+                    .font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
+            }
+        }
+    }
+
+    private static func timeString(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
     }
 
     #if DEBUG
