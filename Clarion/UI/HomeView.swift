@@ -724,7 +724,11 @@ struct HomeView: View {
     // MARK: - Recent run (the latest training session — endurance leads with it)
 
     private var recentWorkout: WearableWorkout? {
-        (briefWindow?.workouts ?? []).max(by: { $0.date < $1.date })
+        // Same-day tiebreak on duration: a 41-minute ride should headline over the
+        // 11-minute walk logged the same afternoon (date-only max picked arbitrarily).
+        (briefWindow?.workouts ?? []).max(by: {
+            ($0.date, $0.durationMin) < ($1.date, $1.durationMin)
+        })
     }
 
     @ViewBuilder
