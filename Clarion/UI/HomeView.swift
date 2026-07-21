@@ -991,7 +991,9 @@ struct HomeView: View {
                         Spacer()
                         Button {
                             Haptics.tap()
-                            Task { await openWeb(path: "/dashboard/logbook") }
+                            // Logbook is a NATIVE surface — open it in-app, don't bounce to the
+                            // web (that read as "the app redirected me to clarionlabs.tech").
+                            libraryRoute = .logbook
                         } label: {
                             Text("Plan it")
                                 .font(.clarionLabel(13))
@@ -1264,7 +1266,8 @@ struct HomeView: View {
         case "/labs/upload":
             Task { await openWeb(path: "/labs/upload") }
         case "/dashboard/logbook":
-            Task { await openWeb(path: "/dashboard/logbook") }
+            // Native surface — present it in-app rather than opening the web logbook.
+            libraryRoute = .logbook
         case "/dashboard#protocol":
             // The doses card is right above — re-engage by logging the next dose directly.
             if let next = takeableStack.first(where: { !log.isDone($0) }) {
