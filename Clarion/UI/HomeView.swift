@@ -737,9 +737,11 @@ struct HomeView: View {
             card {
                 VStack(alignment: .leading, spacing: Brand.s3) {
                     HStack {
-                        Eyebrow(workoutKindLabel(w.type))
+                        // Stable slot name; the sport moves to the meta corner ("RIDE · 4 DAYS
+                        // AGO") so the card doesn't rename itself per session type.
+                        Eyebrow("Last activity")
                         Spacer()
-                        Text(relativeDay(w.date))
+                        Text("\(sportWord(w.type).uppercased()) · \(relativeDay(w.date))")
                             .font(.clarionLabel(10)).tracking(0.1 * 10)
                             .foregroundStyle(Color.ink3)
                     }
@@ -795,16 +797,16 @@ struct HomeView: View {
         }
     }
 
-    private func workoutKindLabel(_ type: String) -> String {
+    private func sportWord(_ type: String) -> String {
         switch type {
-        case "run": return "Last run"
-        case "ride": return "Last ride"
-        case "swim": return "Last swim"
-        case "strength": return "Last lift"
-        case "walk": return "Last walk"
-        case "hike": return "Last hike"
-        case "row": return "Last row"
-        default: return "Last session"
+        case "run": return "Run"
+        case "ride": return "Ride"
+        case "swim": return "Swim"
+        case "strength": return "Lift"
+        case "walk": return "Walk"
+        case "hike": return "Hike"
+        case "row": return "Row"
+        default: return "Session"
         }
     }
 
