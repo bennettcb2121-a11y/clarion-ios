@@ -130,6 +130,18 @@ struct StackItem: Codable, Identifiable {
     /// Canonical `protocol_log.checks` key — present once the API parity update ships;
     /// the supplement name is the accepted legacy fallback.
     var logKey: String?
+    /// How full the user's bottle is, from their tracked inventory. `nil` when the
+    /// supplement isn't tracked — the row then shows the plain form glyph, never a fake level.
+    var supply: Supply?
+
+    /// Bottle-drain supply level for one stack item — computed server-side from
+    /// pills-per-bottle ÷ dose ÷ opened-date, mirroring the web shelf math.
+    struct Supply: Codable {
+        var fillPercent: Double   // 0…100
+        var status: String        // "ok" | "low" | "out"
+        var daysLeft: Int
+        var pillsRemaining: Int?
+    }
 
     var id: String { name }
 

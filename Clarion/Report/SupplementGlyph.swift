@@ -128,3 +128,72 @@ struct SupplementGlyph: View {
         }
     }
 }
+
+/// A small draining bottle for a tracked supplement: a pill-bottle silhouette whose liquid
+/// level drops with real supply, tinted by status (ok forest → low amber → out clay). Mirrors
+/// the web BottleDrainIcon. Shown only when the item has tracked inventory; otherwise the plain
+/// SupplementGlyph stands in (no fabricated levels).
+struct BottleDrain: View {
+    let fillPercent: Double // 0…100
+    let status: String      // "ok" | "low" | "out"
+
+    private var tone: Color {
+        switch status {
+        case "out": return .clay
+        case "low": return .amber
+        default: return .forest
+        }
+    }
+    private var fill: CGFloat { max(0, min(1, CGFloat(fillPercent) / 100)) }
+
+    var body: some View {
+        // Body 15w × 20h inside a 30×30 slot, with a 7w cap above.
+        VStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(tone.opacity(0.9))
+                .frame(width: 8, height: 3)
+            ZStack(alignment: .bottom) {
+                // Liquid — drains from the bottom; a hairline empty band above at low fill.
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(tone.opacity(status == "out" ? 0 : 0.85))
+                        .frame(height: geo.size.height * fill)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                // Glass outline.
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(tone.opacity(status == "out" ? 0.8 : 0.55), lineWidth: 1.3)
+                // Shoulder highlight so it reads as a bottle, not a battery.
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(tone.opacity(0.10))
+            }
+            .frame(width: 15, height: 20)
+        }
+        .frame(width: 30, height: 30)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(status == "out" ? Color.clayWash : (status == "low" ? Color.amberWash : Color.forestWash))
+        )
+        .accessibilityHidden(true)
+    }
+}
+
+extension StackItem.Supply {
+    /// Compact caption for a row — "Out", "2 days", "9 days left". Empty when comfortably stocked
+    /// (≥30 days) so a healthy bottle doesn't nag.
+    var caption: String? {
+        switch status {
+        case "out": return "Out"
+        case "low": return daysLeft <= 0 ? "Out" : "\(daysLeft) day\(daysLeft == 1 ? "" : "s") left"
+        default: return daysLeft <= 30 ? "\(daysLeft) days left" : nil
+        }
+    }
+    var captionColor: Color {
+        switch status {
+        case "out": return .clay
+        case "low": return .amber
+        default: return .ink3
+        }
+    }
+}

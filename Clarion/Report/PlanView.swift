@@ -261,7 +261,12 @@ struct DoseRow: View {
                 }
                 .animation(.spring(response: 0.32, dampingFraction: 0.65), value: done)
 
-                SupplementGlyph(form: .infer(name: item.name, dose: item.dose), done: done)
+                // A tracked bottle drains with real supply; an untracked one shows its form.
+                if let supply = item.supply {
+                    BottleDrain(fillPercent: supply.fillPercent, status: supply.status)
+                } else {
+                    SupplementGlyph(form: .infer(name: item.name, dose: item.dose), done: done)
+                }
 
                 Text(item.coherentName)
                     .font(.clarionDisplay(15))
@@ -272,9 +277,16 @@ struct DoseRow: View {
 
                 Spacer()
 
-                Text(item.dose)
-                    .font(.clarionData(13))
-                    .foregroundStyle(Color.ink3)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(item.dose)
+                        .font(.clarionData(13))
+                        .foregroundStyle(Color.ink3)
+                    if let cap = item.supply?.caption {
+                        Text(cap)
+                            .font(.clarionLabel(10.5))
+                            .foregroundStyle(item.supply?.captionColor ?? Color.ink3)
+                    }
+                }
             }
             .padding(.vertical, 6)
             .contentShape(Rectangle())
@@ -313,6 +325,12 @@ struct StackCard: View {
                     Text("~$\(Int(item.monthlyCost.rounded()))/mo")
                         .font(.clarionData(12))
                         .foregroundStyle(Color.ink3)
+                }
+                if let cap = item.supply?.caption {
+                    Text("·").font(.clarionData(12)).foregroundStyle(Color.ink4)
+                    Text(cap)
+                        .font(.clarionData(12))
+                        .foregroundStyle(item.supply?.captionColor ?? Color.ink3)
                 }
                 Spacer()
             }

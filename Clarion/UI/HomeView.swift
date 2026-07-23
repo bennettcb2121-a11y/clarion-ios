@@ -1058,7 +1058,11 @@ struct HomeView: View {
                         }
                         if let next = remaining.first {
                             HStack(spacing: Brand.s3) {
-                                SupplementGlyph(form: .infer(name: next.name, dose: next.dose))
+                                if let supply = next.supply {
+                                    BottleDrain(fillPercent: supply.fillPercent, status: supply.status)
+                                } else {
+                                    SupplementGlyph(form: .infer(name: next.name, dose: next.dose))
+                                }
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(next.coherentName)
                                         .font(.clarionDisplay(16))
@@ -1097,10 +1101,48 @@ struct HomeView: View {
                                     .foregroundStyle(Color.ink2)
                             }
                         }
+
+                        // Running-low signal from tracked bottles — the home-page bottle-drain
+                        // summary. One quiet, tappable line; silent when everything's stocked.
+                        if lowSupplyCount > 0 {
+                            Button {
+                                Haptics.tap()
+                                tab = 3
+                            } label: {
+                                HStack(spacing: Brand.s2) {
+                                    Image(systemName: "arrow.triangle.2.circlepath.circle")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.clay)
+                                    Text(lowSupplyLabel)
+                                        .font(.clarionBody(13))
+                                        .foregroundStyle(Color.clay)
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(Color.clay.opacity(0.6))
+                                }
+                                .padding(.top, 2)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PressableStyle())
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Stack items whose tracked bottle is low or out — drives the Home running-low line.
+    private var lowSupplyCount: Int {
+        takeableStack.filter { ($0.supply?.status == "low") || ($0.supply?.status == "out") }.count
+    }
+
+    private var lowSupplyLabel: String {
+        let out = takeableStack.filter { $0.supply?.status == "out" }.count
+        if out > 0 && out == lowSupplyCount {
+            return out == 1 ? "1 supplement is out — reorder" : "\(out) supplements are out — reorder"
+        }
+        return lowSupplyCount == 1 ? "1 supplement running low" : "\(lowSupplyCount) supplements running low"
     }
 
     // MARK: - Victory / delta card (between draws)
