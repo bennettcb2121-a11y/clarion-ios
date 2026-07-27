@@ -104,9 +104,11 @@ final class ReportStore: ObservableObject {
             BiomarkerResult(name: "TSH", value: 2.1, unit: "mIU/L", optimalMin: 0.5, optimalMax: 4.0, status: "optimal", labNormalMin: 0.4, labNormalMax: 4.5, verdict: "Thyroid signaling looks unremarkable at 2.1.", verdictIsFlagged: false),
         ],
         stack: [
-            StackItem(name: "Iron — gentle (bisglycinate)", dose: "25 mg", monthlyCost: 12, recommendationType: "add", reason: "Your ferritin (34) is below the endurance floor of 50 — repletion supports oxygen transport and recovery.", marker: "Ferritin"),
-            StackItem(name: "Vitamin D3", dose: "2000 IU", monthlyCost: 8, recommendationType: "add", reason: "Nudges your 28 ng/mL into the 30–50 optimal band.", marker: "Vitamin D"),
-            StackItem(name: "Magnesium glycinate", dose: "300 mg", monthlyCost: 9, recommendationType: "keep", reason: "Training support — worth keeping through your current block.", marker: nil),
+            // Supply levels span the three drain states (healthy / low / out) plus one
+            // untracked row, so the screenshot harness exercises every bottle rendering.
+            StackItem(name: "Iron — gentle (bisglycinate)", dose: "25 mg", monthlyCost: 12, recommendationType: "add", reason: "Your ferritin (34) is below the endurance floor of 50 — repletion supports oxygen transport and recovery.", marker: "Ferritin", supply: .init(fillPercent: 68, status: "ok", daysLeft: 41, pillsRemaining: 41)),
+            StackItem(name: "Vitamin D3", dose: "2000 IU", monthlyCost: 8, recommendationType: "add", reason: "Nudges your 28 ng/mL into the 30–50 optimal band.", marker: "Vitamin D", supply: .init(fillPercent: 18, status: "low", daysLeft: 9, pillsRemaining: 9)),
+            StackItem(name: "Magnesium glycinate", dose: "300 mg", monthlyCost: 9, recommendationType: "keep", reason: "Training support — worth keeping through your current block.", marker: nil, supply: .init(fillPercent: 0, status: "out", daysLeft: 0, pillsRemaining: 0)),
             StackItem(name: "Zinc picolinate", dose: "30 mg", monthlyCost: 7, recommendationType: "consider_cut", reason: "Nothing in your labs needs it — save $7/mo.", marker: nil),
         ],
         stackMonthlyCost: 29,
