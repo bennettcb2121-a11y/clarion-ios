@@ -150,6 +150,7 @@ final class SettingsStore: ObservableObject {
         analysisPurchasedAt: "2026-03-14T12:00:00.000Z",
         planTier: "full",
         menopauseStage: nil,
+        pregnancyStatus: nil,
         updatedAt: "2026-07-01T12:00:00.000Z"
     )
     #endif

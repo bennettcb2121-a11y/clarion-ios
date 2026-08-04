@@ -214,6 +214,22 @@ struct SettingsView: View {
                 }
                 errorLine(for: "diet_preference")
                 rowDivider
+                // Life stage — these retune real marker bands, so they live with age/sex rather
+                // than in a preferences section. Each is shown only to the group it applies to.
+                if PregnancyCatalog.shouldAsk(sex: store.profile?.sex, age: store.profile?.age) {
+                    menuRow("Pregnancy", value: PregnancyCatalog.label(for: store.profile?.pregnancyStatus)) {
+                        pregnancyMenu
+                    }
+                    errorLine(for: "pregnancy_status")
+                    rowDivider
+                }
+                if MenopauseCatalog.shouldAsk(sex: store.profile?.sex, age: store.profile?.age) {
+                    menuRow("Life stage", value: MenopauseCatalog.label(for: store.profile?.menopauseStage)) {
+                        menopauseMenu
+                    }
+                    errorLine(for: "menopause_stage")
+                    rowDivider
+                }
                 symptomsRows
                 errorLine(for: "symptoms")
                 rowDivider
@@ -234,6 +250,24 @@ struct SettingsView: View {
                         Task { await store.save(["profile_type": opt.id], field: "profile_type") }
                     }
                 }
+            }
+        }
+    }
+
+    private var pregnancyMenu: some View {
+        ForEach(PregnancyCatalog.options) { opt in
+            Button(opt.label) {
+                Haptics.selection()
+                Task { await store.save(["pregnancy_status": opt.id], field: "pregnancy_status") }
+            }
+        }
+    }
+
+    private var menopauseMenu: some View {
+        ForEach(MenopauseCatalog.options) { opt in
+            Button(opt.label) {
+                Haptics.selection()
+                Task { await store.save(["menopause_stage": opt.id], field: "menopause_stage") }
             }
         }
     }

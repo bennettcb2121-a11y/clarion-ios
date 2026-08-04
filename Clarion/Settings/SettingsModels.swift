@@ -45,6 +45,11 @@ struct ProfileSettings: Codable, Equatable {
     /// READ-ONLY: none | lite | full.
     var planTier: String?
     var menopauseStage: String?
+    /// not_pregnant | pregnant | postpartum | unknown. Explicit self-report only, never inferred.
+    /// The range engine suppresses scoring on pregnancy-shifted markers (ALP, haemoglobin,
+    /// ferritin, TSH, creatinine and more) when this is "pregnant" — without it a normal
+    /// pregnancy scores as a cluster of abnormalities. Must round-trip so iOS and web agree.
+    var pregnancyStatus: String?
     var updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -74,6 +79,7 @@ struct ProfileSettings: Codable, Equatable {
         case analysisPurchasedAt = "analysis_purchased_at"
         case planTier = "plan_tier"
         case menopauseStage = "menopause_stage"
+        case pregnancyStatus = "pregnancy_status"
         case updatedAt = "updated_at"
     }
 
