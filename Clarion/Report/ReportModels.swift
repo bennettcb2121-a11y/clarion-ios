@@ -150,8 +150,27 @@ struct StackItem: Codable, Identifiable {
 
     /// The three-bucket money grouping the web tells: Need (lab-backed adds),
     /// Maintain (keeps/training support), Cut (drops).
+    /// The three-bucket money grouping the web tells: Need (lab-backed), Maintain, Cut.
+    ///
+    /// This switch used to list ONLY the verdict-style words ("add", "consider_cut", …). The API
+    /// does not send those. `/api/report` serves `recommendationType` straight from the saved
+    /// stack snapshot, whose vocabulary is `RecommendationType` in src/lib/supplements.ts:73 —
+    /// "Core" | "Conditional" | "Context-dependent". None of those matched, so EVERY item fell to
+    /// `default` and the Plan tab showed the whole stack as "Keep steady": the user was never told
+    /// what their blood justifies or what to stop, which is the decision the product exists to
+    /// make. A Core item driven by a deficient marker read identically to a no-signal one.
+    ///
+    /// Both vocabularies are accepted now — the snapshot's, and the verdict words in case a future
+    /// payload sends those — so this cannot silently fall through again. Anything genuinely
+    /// unrecognised still lands in `.maintain`, the safe bucket: it neither invents a lab
+    /// justification nor tells someone to stop taking something.
     var bucket: StackBucket {
         switch recommendationType.lowercased() {
+        // Snapshot vocabulary (src/lib/supplements.ts getRecommendationType).
+        // Core = a deficient marker drives it; Conditional = low/suboptimal marker.
+        case "core", "conditional": return .need
+        case "context-dependent", "context dependent": return .maintain
+        // Verdict vocabulary.
         case "add", "increase", "start": return .need
         case "consider_cut", "cut", "drop", "remove": return .cut
         default: return .maintain
