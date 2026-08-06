@@ -28,6 +28,10 @@ struct HomeView: View {
     @AppStorage(HomeNudge.dismissedDayKey) private var nudgeDismissedDay = ""
     @State private var requestingAuth = false
     @State private var openingWeb = false
+    /// Lab intake, presented IN-APP. Bouncing the user to Safari for the single most
+    /// important action in the product lost the session feel and the App Store dislikes a
+    /// core flow leaving the app — the webview surface already exists, so use it.
+    @State private var addLabsSheet = false
     @State private var showSettings = false
     @State private var libraryRoute: LibraryRoute? = nil
     @State private var showChat = false
@@ -198,6 +202,16 @@ struct HomeView: View {
             LibraryHomeView(auth: auth, deepLink: route.deepLink)
                 .environmentObject(auth)
                 .environmentObject(subscription)
+        }
+        .sheet(isPresented: $addLabsSheet) {
+            NavigationStack {
+                ClarionWebSurface(auth: auth, path: "/labs/upload", title: "Add labs")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") { addLabsSheet = false }
+                        }
+                    }
+            }
         }
         .sheet(isPresented: $showCustomize) {
             HomeCustomizeSheet(store: layout)
@@ -1023,7 +1037,7 @@ struct HomeView: View {
                         .font(.clarionBody(14))
                         .foregroundStyle(Color.ink2)
                     Button {
-                        Task { await openWeb(path: "/labs/upload") }
+                        addLabsSheet = true
                     } label: {
                         Text("Add labs").frame(maxWidth: .infinity)
                     }
@@ -1306,7 +1320,7 @@ struct HomeView: View {
         case "/dashboard/plan":
             tab = 3
         case "/labs/upload":
-            Task { await openWeb(path: "/labs/upload") }
+            addLabsSheet = true
         case "/dashboard/logbook":
             // Native surface — present it in-app rather than opening the web logbook.
             libraryRoute = .logbook
