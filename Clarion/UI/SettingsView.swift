@@ -592,7 +592,12 @@ struct SettingsView: View {
             set: { date in
                 let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
                 let hhmm = String(format: "%02d:%02d", comps.hour ?? 8, comps.minute ?? 0)
-                Task { await store.save(["daily_reminder_time": hhmm], field: "reminders") }
+                Task {
+                    await store.save(["daily_reminder_time": hhmm], field: "reminders")
+                    // Without this the pending notification keeps its old fire time: the picker
+                    // shows the new one, the phone rings at the old one.
+                    await rescheduleDailyDose(time: hhmm)
+                }
             }
         )
     }
@@ -610,20 +615,49 @@ struct SettingsView: View {
         )
     }
 
-    /// Enabling seeds time + device timezone + channel, exactly like the web's toggle.
+    /// Enabling seeds time + device timezone + channel, exactly like the web's toggle — and, on
+    /// this platform, actually schedules the thing. The app previously had no notification code at
+    /// all, so this toggle set a server flag and the phone stayed silent while the user was emailed.
+    ///
+    /// Asking for permission HERE, at the moment of intent, rather than at launch: a prompt the
+    /// user didn't ask for is the one they deny, and iOS only offers it once.
     private func toggleDailyReminder(_ on: Bool) async {
         guard let profile = store.profile else { return }
         if on {
-            let channel = profile.dailyReminderChannel == "sms" ? "sms" : "email"
+            let granted = await NotificationManager.shared.requestAuthorization()
+            let time = profile.dailyReminderTime ?? "08:00"
+            // Claim the reminder for this device ONLY if we can actually deliver it. Without
+            // permission we leave the channel on email so the user still gets reminded somehow —
+            // silently claiming it would mean nobody reminds them at all.
+            let channel = granted ? "device" : (profile.dailyReminderChannel == "sms" ? "sms" : "email")
             await store.save([
                 "daily_reminder": true,
-                "daily_reminder_time": profile.dailyReminderTime ?? "08:00",
+                "daily_reminder_time": time,
                 "daily_reminder_timezone": TimeZone.current.identifier,
                 "daily_reminder_channel": channel,
             ], field: "reminders")
+            if granted {
+                await NotificationManager.shared.scheduleDailyDose(time: time, body: doseReminderBody)
+            }
         } else {
+            NotificationManager.shared.cancelDailyDose()
             await store.save(["daily_reminder": false], field: "reminders")
         }
+    }
+
+    /// Kept deliberately generic. The exact dose list lives on the server and changes between
+    /// the moment we schedule and the moment it fires — promising specifics here would let the
+    /// notification go stale and name a supplement they already stopped.
+    private var doseReminderBody: String {
+        "Log today's protocol in Clarion."
+    }
+
+    /// Re-schedule when the user changes the TIME, otherwise the notification keeps firing at the
+    /// old one — the toggle looks right and the phone is wrong.
+    private func rescheduleDailyDose(time: String) async {
+        guard store.profile?.dailyReminder == true,
+              store.profile?.dailyReminderChannel == "device" else { return }
+        await NotificationManager.shared.scheduleDailyDose(time: time, body: doseReminderBody)
     }
 
     // MARK: - Health / privacy / account (kept from v1, restyled onto cards)
