@@ -97,9 +97,9 @@ struct PlanView: View {
 
     @ViewBuilder
     private func moneyCard(_ r: ReportResponse, need: [StackItem], maintain: [StackItem], cut: [StackItem]) -> some View {
-        let needCost = need.reduce(0) { $0 + $1.monthlyCost }
-        let maintainCost = maintain.reduce(0) { $0 + $1.monthlyCost }
-        let cutCost = cut.reduce(0) { $0 + $1.monthlyCost }
+        let needCost = need.reduce(0) { $0 + $1.effectiveMonthlyCost }
+        let maintainCost = maintain.reduce(0) { $0 + $1.effectiveMonthlyCost }
+        let cutCost = cut.reduce(0) { $0 + $1.effectiveMonthlyCost }
         let planCost = needCost + maintainCost
 
         // Stored recommendations don't always carry an estimated cost (older rows, or a

@@ -134,6 +134,29 @@ struct StackItem: Codable, Identifiable {
     /// supplement isn't tracked — the row then shows the plain form glyph, never a fake level.
     var supply: Supply?
 
+    // MARK: - Live verdict (server-computed)
+    //
+    // The saved stack snapshot only carries a coarse `recommendationType` and a monthlyCost that
+    // is 0 on older rows, so bucketing off it put every supplement in "Keep steady" and rendered
+    // "$0 backed by your blood". These fields are the SAME verdict the web plan renders,
+    // computed server-side in /api/report. Prefer them; fall back only when absent.
+    /// "add" | "keep" | "drop" | "ask"
+    var verdict: String?
+    /// "blood" | "blood_adjacent" | "goal" | "ask" | "waste" — the honest source of the call.
+    var verdictEvidence: String?
+    var verdictReason: String?
+    /// e.g. "below your 40–60 target" — nil when there's no lab range to anchor to.
+    var targetClause: String?
+    var caution: String?
+    /// The verdict's own cost, populated where the snapshot's monthlyCost is 0.
+    var verdictMonthlyUsd: Double?
+
+    /// Cost to display: the verdict's figure when the snapshot has none.
+    var effectiveMonthlyCost: Double {
+        if monthlyCost > 0 { return monthlyCost }
+        return verdictMonthlyUsd ?? 0
+    }
+
     /// Bottle-drain supply level for one stack item — computed server-side from
     /// pills-per-bottle ÷ dose ÷ opened-date, mirroring the web shelf math.
     struct Supply: Codable {
@@ -165,6 +188,19 @@ struct StackItem: Codable, Identifiable {
     /// unrecognised still lands in `.maintain`, the safe bucket: it neither invents a lab
     /// justification nor tells someone to stop taking something.
     var bucket: StackBucket {
+        // The live verdict wins when present. `evidence` is what actually distinguishes a
+        // lab-backed keep from a goal-based one — kind alone collapses both to "keep", which is
+        // how the whole shelf ended up in one bucket.
+        if let kind = verdict?.lowercased() {
+            switch kind {
+            case "add": return .need
+            case "drop": return .cut
+            case "keep", "ask":
+                let ev = (verdictEvidence ?? "").lowercased()
+                return (ev == "blood" || ev == "blood_adjacent") ? .need : .maintain
+            default: break
+            }
+        }
         switch recommendationType.lowercased() {
         // Snapshot vocabulary (src/lib/supplements.ts getRecommendationType).
         // Core = a deficient marker drives it; Conditional = low/suboptimal marker.
