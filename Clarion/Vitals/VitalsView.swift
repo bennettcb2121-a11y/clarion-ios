@@ -12,6 +12,7 @@ struct VitalsView: View {
     /// Home's copy had fallen back to the sample and rendered no metrics at all.
     @ObservedObject var store: VitalsStore
     @State private var customizing = false
+    @State private var connectSheet = false
 
     var body: some View {
         NavigationStack {
@@ -43,8 +44,45 @@ struct VitalsView: View {
                 Haptics.touch()
                 await reload()
             }
+            .sheet(isPresented: $connectSheet) {
+                NavigationStack {
+                    ClarionWebSurface(auth: auth, path: "/dashboard/vitals", title: "Connect")
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Close") {
+                                    connectSheet = false
+                                    Task { await reload() }
+                                }
+                            }
+                        }
+                }
+            }
         }
         .task { if case .loading = store.state { await store.load() } }
+    }
+
+    /// Oura connect is an OAuth consent flow that sets an httpOnly cookie, so it has to run in a
+    /// real browser context rather than a reconstructed native form — we hand off to the Vitals
+    /// page that already owns the button.
+    private var connectWearableCard: some View {
+        Button {
+            Haptics.tap()
+            connectSheet = true
+        } label: {
+            VStack(alignment: .leading, spacing: Brand.s2) {
+                Text("Connect a wearable")
+                    .font(.clarionDisplay(19))
+                    .foregroundStyle(Color.ink)
+                Text("Link Oura or Apple Health to see your real readiness, sleep and HRV here.")
+                    .font(.clarionBody(13))
+                    .foregroundStyle(Color.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Brand.s5)
+            .clarionCard(cornerRadius: Brand.rXL)
+        }
+        .buttonStyle(PressableStyle())
     }
 
     @ViewBuilder
@@ -53,6 +91,14 @@ struct VitalsView: View {
         VStack(spacing: 18) {
             if !snap.isDemo && snap.isStale {
                 staleBanner(snap).entrance(0)
+            }
+
+            // The app could display wearable data but never offered a way to START sending it:
+            // "oura" existed only as a display label, so a user with a ring had no path from the
+            // Vitals tab to connecting it. Shown when nothing real is arriving — demo data or a
+            // stale snapshot — because that is exactly when someone is looking for this.
+            if snap.isDemo || snap.isStale {
+                connectWearableCard.entrance(0)
             }
 
             hero(snap).entrance(1)
