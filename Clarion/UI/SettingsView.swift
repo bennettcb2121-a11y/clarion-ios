@@ -8,8 +8,13 @@ import SwiftUI
 /// exactly like the web keeps units as unpersisted component state.
 struct SettingsView: View {
     @EnvironmentObject private var auth: SupabaseAuth
-    #if DEBUG
+    // NOT #if DEBUG. "Sync Apple Health now" (healthCard) and syncStatusLine are shipped,
+    // always-compiled UI, so a Debug-only declaration made the RELEASE build fail — which is
+    // invisible locally, because the simulator builds Debug. The app was unarchivable, and so
+    // unsubmittable, from a7f9b89 (2026-07-20) until this line moved. ClarionApp injects
+    // `sync` unconditionally (ClarionApp.swift:87), so this resolves at runtime in Release.
     @EnvironmentObject private var sync: SyncCoordinator
+    #if DEBUG
     @State private var seeding = false
     @State private var seedResult: String?
     @State private var confirmSeed = false
