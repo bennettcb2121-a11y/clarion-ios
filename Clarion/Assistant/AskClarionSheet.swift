@@ -175,7 +175,7 @@ struct AskClarionSheet: View {
             Text("Turn on AI insights to use the assistant")
                 .font(.clarionDisplay(17))
                 .foregroundStyle(Color.ink)
-            Text("Your questions (and, if you choose, a summary of your panel) are processed by an AI service to generate educational answers. You can revoke this any time in settings.")
+            Text("Clarion sends your questions and lab data to OpenAI to write answers, interpretations and supplement checks. If you upload a report, the image is sent — including any name or date of birth printed on it. Typed values go with your age, sex and goals, not your name or email. Some short plan wording may be written by Anthropic (Claude). Their API terms bar training on this data; OpenAI may keep it up to 30 days for abuse monitoring. Withdraw anytime at clarionlabs.tech → Settings → Privacy & consent.")
                 .font(.clarionBody(13.5))
                 .foregroundStyle(Color.ink2)
                 .fixedSize(horizontal: false, vertical: true)
