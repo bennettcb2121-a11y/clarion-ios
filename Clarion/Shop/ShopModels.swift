@@ -66,6 +66,9 @@ struct ShopCard: Codable, Identifiable {
 
     /// true ⇒ the buy CTA demotes to a ghost "Buy anyway".
     var suppressPurchase: Bool { warning.suppressPurchase }
+
+    /// true ⇒ no buy CTA at all (safety), only the warning detail.
+    var blockPurchase: Bool { warning.blockPurchase ?? false }
 }
 
 /// The per-preset "why this is for you" — identical words to the report/plan verdict.
@@ -82,6 +85,9 @@ struct ShopWarning: Codable {
     var label: String
     var detail: String
     var suppressPurchase: Bool
+    /// Could hurt THIS person (clashes with a medication they take, or a hormone / vitamin A with no
+    /// lab need). No buy action at all — only the reason. Optional so older payloads still decode.
+    var blockPurchase: Bool? = nil
 }
 
 /// ClarionPickLabGap — the pick sheet's status line, built from the user's own result.

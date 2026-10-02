@@ -224,7 +224,10 @@ struct PickSheet: View {
     @ViewBuilder
     private var buyArea: some View {
         let buy = selected.buy
-        if buy.isExternalLink, let url = buy.resolvedURL {
+        if card.blockPurchase {
+            // Safety block — the suppress note above already says why. No way to buy here.
+            EmptyView()
+        } else if buy.isExternalLink, let url = buy.resolvedURL {
             if card.suppressPurchase {
                 Button {
                     Haptics.tap()
