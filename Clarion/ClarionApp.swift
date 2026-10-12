@@ -229,6 +229,14 @@ struct RootView: View {
             .environment(\.symbolVariants, .none)
             .environmentObject(subscription)
             .tint(Color.forest)
+            // Right after an in-app purchase: the analysis they just paid for (web 2A).
+            .fullScreenCover(isPresented: $subscription.justPurchased) {
+                PostPurchaseWelcome(
+                    auth: auth,
+                    onOpenReport: { subscription.justPurchased = false; tab = 2 },
+                    onHome: { subscription.justPurchased = false; tab = 0 }
+                )
+            }
             .onChange(of: tab) { _, _ in Haptics.selection() }
             .onChange(of: scenePhase) { _, phase in
                 // Daily-freshness guarantee: whenever the app comes to the foreground and the
@@ -242,6 +250,9 @@ struct RootView: View {
                 }
             }
             .onAppear {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("UITEST_WELCOME") { subscription.justPurchased = true }
+                #endif
                 if uiTestWeb {
                     // Start on the Report tab (a web surface) unless TAB= overrides.
                     let tabArg = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("TAB=") }

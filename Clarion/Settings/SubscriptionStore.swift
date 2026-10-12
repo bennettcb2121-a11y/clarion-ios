@@ -33,6 +33,8 @@ final class SubscriptionStore: ObservableObject {
     @Published private(set) var products: [Product] = []
     /// A purchase or restore is in flight (drives the buy button's spinner + disabled state).
     @Published private(set) var purchasing = false
+    /// Set when an in-app purchase just completed — the root shows the analysis pop-up (web 2A).
+    @Published var justPurchased = false
 
     /// The two legs, combined into `entitled` by `recompute()`.
     private var serverEntitled: Bool
@@ -163,6 +165,7 @@ final class SubscriptionStore: ObservableObject {
             let result = try await product.purchase()
             if case .success(let verification) = result {
                 await handle(verification)
+                if entitled { justPurchased = true }
             }
             // .userCancelled / .pending (Ask to Buy) → no change; a pending purchase resolves
             // later through Transaction.updates.

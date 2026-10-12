@@ -13,8 +13,31 @@ struct MembershipWall: View {
     @EnvironmentObject private var auth: SupabaseAuth
     @EnvironmentObject private var subscription: SubscriptionStore
     @State private var opening = false
+    /// Their own lab slip with Clarion's column blurred (web 1A) — nil without labs.
+    @State private var teaser: PaywallTeaserData?
 
     var body: some View {
+        VStack(spacing: 0) {
+            if let teaser {
+                PaywallTeaserCard(t: teaser)
+                    .padding(.horizontal, Brand.s5)
+                    .padding(.top, Brand.s5)
+                    .entrance(0)
+            }
+            wall
+        }
+        .task { await loadTeaser() }
+    }
+
+    private func loadTeaser() async {
+        #if DEBUG
+        if AnalysisWelcomeFixture.has("UITEST_LOCKED") { teaser = AnalysisWelcomeFixture.sample?.teaser; return }
+        #endif
+        guard teaser == nil, let token = try? await auth.validAccessToken() else { return }
+        teaser = (try? await ClarionAPI.fetchAnalysisWelcome(accessToken: token))?.teaser
+    }
+
+    private var wall: some View {
         VStack(spacing: Brand.s4) {
             Image(systemName: "lock")
                 .font(.system(size: 19, weight: .medium))
@@ -110,8 +133,8 @@ struct MembershipWall: View {
         .frame(maxWidth: .infinity)
         .clarionCard()
         .padding(Brand.s5)
-        .padding(.top, Brand.s6)
-        .entrance(0)
+        .padding(.top, teaser == nil ? Brand.s6 : 0)
+        .entrance(1)
         .task { await subscription.loadProducts() }
     }
 
