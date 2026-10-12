@@ -97,6 +97,14 @@ final class SurveyState: ObservableObject {
             goalIds: goalIds, trainingFocus: trainingFocus, age: trimmedAge, sex: sex
         )
 
+        // Guest (survey before sign-in, like the web): keep the answers on the device; they're
+        // saved to the account right after sign-in (RootView.checkSurveyGate).
+        if auth.session == nil {
+            GuestSurvey.stash(patch)
+            onFinished()
+            return
+        }
+
         #if DEBUG
         // Screenshot harness: no session in the sim — let the flow complete visually.
         if ProcessInfo.processInfo.arguments.contains("UITEST_SURVEY") {
@@ -123,4 +131,25 @@ final class SurveyState: ObservableObject {
     func finish() {
         onFinished()
     }
+}
+
+/// Survey answers taken BEFORE sign-in. Held on the device until the account exists, then
+/// PATCHed into it once (only if the account has no survey of its own) and cleared.
+enum GuestSurvey {
+    private static let key = "clarion_guest_survey_patch"
+    /// Set once anyone has signed in on this device — a returning user gets Sign in, not the survey.
+    static let everSignedInKey = "clarion_ever_signed_in"
+
+    static func stash(_ patch: [String: Any]) {
+        if let data = try? JSONSerialization.data(withJSONObject: patch) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    static var pending: [String: Any]? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    static func clear() { UserDefaults.standard.removeObject(forKey: key) }
 }

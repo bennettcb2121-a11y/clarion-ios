@@ -2,6 +2,8 @@ import SwiftUI
 import AuthenticationServices
 
 struct SignInView: View {
+    /// Came from the guest survey — their answers are waiting to be saved to the account.
+    var savingAnswers = false
     @EnvironmentObject private var auth: SupabaseAuth
     @State private var email = ""
     @State private var password = ""
@@ -19,6 +21,18 @@ struct SignInView: View {
                     Wordmark(nameSize: 36, centered: true)
                         .padding(.top, 60)
                         .padding(.bottom, 8)
+
+                    if savingAnswers {
+                        VStack(spacing: 6) {
+                            Text("Save your answers.")
+                                .font(.clarionDisplay(26))
+                                .foregroundStyle(Color.ink)
+                            Text("Make a free account to add your labs.")
+                                .font(.clarionBody(15))
+                                .foregroundStyle(Color.ink2)
+                        }
+                        .multilineTextAlignment(.center)
+                    }
 
                     // Primary path: the providers most Clarion accounts were created with.
                     // NATIVE Sign in with Apple — a real ASAuthorization request (nonce-protected),

@@ -6,9 +6,12 @@ import SwiftUI
 /// `profiles` columns the web writes, so the dashboard calibrates identically.
 struct SurveyFlowView: View {
     @StateObject private var state: SurveyState
+    /// Guests only: "Already have an account? Sign in" on the welcome step.
+    private let onSignIn: (() -> Void)?
 
-    init(auth: SupabaseAuth, onFinished: @escaping () -> Void) {
+    init(auth: SupabaseAuth, onSignIn: (() -> Void)? = nil, onFinished: @escaping () -> Void) {
         _state = StateObject(wrappedValue: SurveyState(auth: auth, onFinished: onFinished))
+        self.onSignIn = onSignIn
     }
 
     var body: some View {
@@ -74,7 +77,7 @@ struct SurveyFlowView: View {
     private var stepBody: some View {
         switch state.step {
         case .welcome:
-            SurveyWelcomeStep { state.advance() }
+            SurveyWelcomeStep(onSignIn: onSignIn) { state.advance() }
         case .aboutYou:
             SurveyAboutYouStep(state: state) { state.advance() }
         case .activity:

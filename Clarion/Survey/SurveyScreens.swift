@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Welcome (the web's STEP_HOOK, verbatim copy)
 
 struct SurveyWelcomeStep: View {
+    var onSignIn: (() -> Void)? = nil
     let onBegin: () -> Void
 
     var body: some View {
@@ -28,6 +29,16 @@ struct SurveyWelcomeStep: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .padding(.top, Brand.s2)
+            if let onSignIn {
+                Button {
+                    Haptics.tap()
+                    onSignIn()
+                } label: {
+                    (Text("Already have an account? ").foregroundStyle(Color.ink3) + Text("Sign in").foregroundStyle(Color.forest))
+                        .font(.clarionLabel(14))
+                        .frame(maxWidth: .infinity)
+                }
+            }
             Spacer(minLength: 0)
             Spacer(minLength: 0)
         }

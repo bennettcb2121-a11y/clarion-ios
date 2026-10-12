@@ -162,6 +162,9 @@ struct RootView: View {
     // completion per user so relaunches never flash it. Fails OPEN (any error → app).
     private enum SurveyGate { case checking, needed, passed }
     @State private var surveyGate: SurveyGate = .checking
+    /// Signed out on a device nobody has signed in on, with no answers yet → survey before sign-in.
+    @State private var guestSurvey: Bool = !UserDefaults.standard.bool(forKey: GuestSurvey.everSignedInKey)
+        && GuestSurvey.pending == nil
 
     private var surveyDoneKey: String { "clarion_survey_done_\(SupabaseAuth.shared.session?.userId ?? "anon")" }
 
@@ -174,8 +177,22 @@ struct RootView: View {
     }
 
     private func checkSurveyGate() async {
-        if UserDefaults.standard.bool(forKey: surveyDoneKey) { surveyGate = .passed; return }
+        UserDefaults.standard.set(true, forKey: GuestSurvey.everSignedInKey)
         guard let token = try? await auth.validAccessToken() else { surveyGate = .passed; return }
+        // Answers they gave as a guest: save them to this account — unless it already has a
+        // survey of its own (an existing member signing in), then the device copy is dropped.
+        if let pending = GuestSurvey.pending {
+            if let existing = try? await ClarionAPI.fetchProfileSettings(accessToken: token), existing != nil {
+                GuestSurvey.clear()
+            } else if (try? await ClarionAPI.updateProfileSettings(patch: pending, accessToken: token)) != nil {
+                GuestSurvey.clear()
+                UserDefaults.standard.set(true, forKey: surveyDoneKey)
+                surveyGate = .passed
+                await report.load()
+                return
+            }
+        }
+        if UserDefaults.standard.bool(forKey: surveyDoneKey) { surveyGate = .passed; return }
         do {
             let profile = try await ClarionAPI.fetchProfileSettings(accessToken: token)
             if profile == nil {
@@ -274,8 +291,14 @@ struct RootView: View {
                     Task { await sync.sync() }
                 }
             }
+        } else if guestSurvey {
+            // New on this device: the survey first, account after (web parity — no sign-in wall
+            // before the first question). Answers wait on the device until sign-in.
+            SurveyFlowView(auth: auth, onSignIn: { guestSurvey = false }) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) { guestSurvey = false }
+            }
         } else {
-            SignInView()
+            SignInView(savingAnswers: GuestSurvey.pending != nil)
                 .onAppear {
                     // A fresh (possibly different) account signs in next — re-check its survey.
                     surveyGate = .checking
