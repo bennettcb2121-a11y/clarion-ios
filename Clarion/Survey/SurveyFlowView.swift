@@ -151,3 +151,57 @@ struct SurveyFlowView: View {
         )
     }
 }
+
+/// Right after sign-in, when the guest survey's answers meet an account that already has its own
+/// (web parity: AccountChoiceCard.tsx). Membership + what's saved, then which answers to keep.
+struct AccountChoiceView: View {
+    let email: String?
+    let isMember: Bool
+    let hasLabs: Bool
+    var onKeep: () -> Void
+    var onUseNew: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Brand.s4) {
+            Spacer(minLength: 0)
+            if let email { Eyebrow("Signed in as \(email)", color: .forest) }
+            Text("You already have an account.")
+                .font(.clarionDisplay(30)).tracking(-0.02 * 30)
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: Brand.s2) {
+                fact(isMember ? "Clarion+ member" : "No Clarion+ yet", on: isMember)
+                fact("Survey answers saved", on: true)
+                if hasLabs { fact("Labs saved", on: true) }
+            }
+            Text("You just took the survey again. Which answers should we use?")
+                .font(.clarionBody(16)).foregroundStyle(Color.ink2)
+            Button("Keep my saved answers") { Haptics.commit(); onKeep() }
+                .buttonStyle(PrimaryButtonStyle())
+            Button("Use my new answers") { Haptics.commit(); onUseNew() }
+                .buttonStyle(SecondaryButtonStyle())
+            if hasLabs {
+                Text("Your labs stay either way.")
+                    .font(.clarionBody(13)).foregroundStyle(Color.ink3)
+                    .frame(maxWidth: .infinity)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(Brand.s5)
+        .background(Color.paper.ignoresSafeArea())
+    }
+
+    private func fact(_ text: String, on: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: on ? "checkmark" : "minus")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color.forest)
+                .frame(width: 22, height: 22)
+                .background(Color.surface, in: Circle())
+            Text(text).font(.clarionLabel(15)).foregroundStyle(on ? Color.ink : Color.ink3)
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(on ? Color.forestWash : Color.surface2, in: RoundedRectangle(cornerRadius: 12))
+    }
+}

@@ -162,6 +162,9 @@ struct RootView: View {
     // completion per user so relaunches never flash it. Fails OPEN (any error → app).
     private enum SurveyGate { case checking, needed, passed }
     @State private var surveyGate: SurveyGate = .checking
+    /// Guest answers met an account that already has answers — the keep/replace screen.
+    private struct AccountChoiceInfo { var isMember: Bool; var hasLabs: Bool }
+    @State private var accountChoice: AccountChoiceInfo?
     /// Signed out on a device nobody has signed in on, with no answers yet → survey before sign-in.
     @State private var guestSurvey: Bool = !UserDefaults.standard.bool(forKey: GuestSurvey.everSignedInKey)
         && GuestSurvey.pending == nil
@@ -183,7 +186,15 @@ struct RootView: View {
         // survey of its own (an existing member signing in), then the device copy is dropped.
         if let pending = GuestSurvey.pending {
             if let existing = try? await ClarionAPI.fetchProfileSettings(accessToken: token), existing != nil {
-                GuestSurvey.clear()
+                // The account has its own answers — ask which to keep (membership + labs shown).
+                await subscription.refresh()
+                await report.load()
+                var hasLabs = false
+                if case .ready = report.state { hasLabs = true }
+                accountChoice = AccountChoiceInfo(isMember: subscription.entitled, hasLabs: hasLabs)
+                UserDefaults.standard.set(true, forKey: surveyDoneKey)
+                surveyGate = .passed
+                return
             } else if (try? await ClarionAPI.updateProfileSettings(patch: pending, accessToken: token)) != nil {
                 GuestSurvey.clear()
                 UserDefaults.standard.set(true, forKey: surveyDoneKey)
@@ -207,6 +218,16 @@ struct RootView: View {
     }
 
     var body: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("UITEST_ACCOUNT") {
+            AccountChoiceView(email: "you@example.com", isMember: true, hasLabs: true, onKeep: {}, onUseNew: {})
+        } else { mainBody }
+        #else
+        mainBody
+        #endif
+    }
+
+    @ViewBuilder private var mainBody: some View {
         if uiTestSurvey {
             SurveyFlowView(auth: auth, onFinished: {})
         } else if auth.isSignedIn && surveyGate == .checking {
@@ -220,6 +241,28 @@ struct RootView: View {
                 // The survey's answers change what every tab shows — load fresh.
                 Task { await report.load() }
             }
+        } else if auth.isSignedIn, let choice = accountChoice {
+            AccountChoiceView(
+                email: auth.session?.email,
+                isMember: choice.isMember,
+                hasLabs: choice.hasLabs,
+                onKeep: {
+                    GuestSurvey.clear()
+                    withAnimation { accountChoice = nil }
+                },
+                onUseNew: {
+                    let pending = GuestSurvey.pending
+                    GuestSurvey.clear()
+                    withAnimation { accountChoice = nil }
+                    guard let pending else { return }
+                    Task {
+                        if let token = try? await auth.validAccessToken() {
+                            _ = try? await ClarionAPI.updateProfileSettings(patch: pending, accessToken: token)
+                            await report.load()
+                        }
+                    }
+                }
+            )
         } else if auth.isSignedIn || uiTestVitals || uiTestWeb {
             // Tab order (and the DEBUG `TAB=<n>` screenshot arg): 0 Home · 1 Vitals ·
             // 2 Report · 3 Plan · 4 Shop. Settings lives behind the gear in Home's nav

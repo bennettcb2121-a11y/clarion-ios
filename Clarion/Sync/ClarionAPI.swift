@@ -33,10 +33,28 @@ enum ClarionAPI {
         return url
     }
 
-    /// Permanently delete the account. Irreversible; the caller signs out after.
-    static func deleteAccount(accessToken: String) async throws {
+    /// What POST /api/account/delete answers with. Stripe is cancelled server-side, but an
+    /// Apple subscription is billed by Apple and ONLY the buyer can stop it, so the server
+    /// flags it instead. The client used to throw this body away, which meant deleting the
+    /// account while Apple quietly kept charging — the surprise that becomes a refund request.
+    /// Fields are optional so a body that omits one still decodes rather than throwing.
+    struct DeleteAccountResponse: Decodable {
+        var ok: Bool?
+        var appleSubscriptionNeedsManualCancel: Bool?
+
+        /// Absent/unknown means "don't warn" — only an explicit true is a live Apple sub.
+        var needsAppleCancel: Bool { appleSubscriptionNeedsManualCancel == true }
+    }
+
+    /// Permanently delete the account. Irreversible; the caller signs out after — but not
+    /// before surfacing `needsAppleCancel`. Deliberately NOT @discardableResult: ignoring
+    /// the result is the bug this returns a value to prevent.
+    static func deleteAccount(accessToken: String) async throws -> DeleteAccountResponse {
         let body = try JSONEncoder().encode(["confirm": "DELETE"])
-        _ = try await post("api/account/delete", body: body, accessToken: accessToken)
+        let data = try await post("api/account/delete", body: body, accessToken: accessToken)
+        // A 2xx means the account is already gone, so an unreadable body must not look like a
+        // failed deletion. Fall back to "nothing to warn about" instead of throwing.
+        return (try? JSONDecoder().decode(DeleteAccountResponse.self, from: data)) ?? DeleteAccountResponse()
     }
 
     // MARK: - Ask Clarion (POST /api/chat)
@@ -78,6 +96,23 @@ enum ClarionAPI {
         } catch {
             // Non-fatal — local StoreKit entitlement stands.
         }
+    }
+
+    // MARK: - Email-first sign-in (POST /api/auth/email-status — no session needed)
+
+    struct EmailStatus: Decodable { var exists: Bool?; var providers: [String]? }
+
+    /// Whether an account exists for this email and how it signs in. Reveals nothing else.
+    static func emailStatus(_ email: String) async throws -> EmailStatus {
+        var req = URLRequest(url: Config.apiBase.appendingPathComponent("api/auth/email-status"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["email": email])
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw APIError.decode }
+        if http.statusCode == 429 { throw APIError.http(429, "Too many tries. Wait a minute.") }
+        guard http.statusCode == 200 else { throw APIError.http(http.statusCode, "Enter a valid email.") }
+        return try JSONDecoder().decode(EmailStatus.self, from: data)
     }
 
     // MARK: - Settings (GET/PATCH /api/account/profile)

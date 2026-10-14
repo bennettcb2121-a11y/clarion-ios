@@ -8,7 +8,9 @@ struct SignInView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var busy = false
-    @State private var emailExpanded = false
+    /// Email first (web parity): enter email → we say whether it has an account and how it signs in.
+    enum EmailStage: Equatable { case email, password, create, oauthOnly([String]), checkInbox }
+    @State private var stage: EmailStage = .email
     @State private var errorMessage: String?
     /// Raw nonce for the in-flight Sign in with Apple request (hashed into the request,
     /// raw copy handed to Supabase to match the token's nonce claim).
@@ -69,18 +71,12 @@ struct SignInView: View {
                     .buttonStyle(PressableStyle())
                     .disabled(busy)
 
-                    // Email is the secondary path (disclosed on tap).
-                    if emailExpanded {
-                        emailForm
-                    } else {
-                        Button("Sign in with email instead") {
-                            Haptics.tap()
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { emailExpanded = true }
-                        }
-                        .font(.clarionBody(13.5))
-                        .foregroundStyle(Color.ink3)
-                        .padding(.top, 2)
+                    HStack(spacing: 10) {
+                        Rectangle().fill(Color.line2).frame(height: 1)
+                        Text("or").font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
+                        Rectangle().fill(Color.line2).frame(height: 1)
                     }
+                    emailForm
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -103,37 +99,113 @@ struct SignInView: View {
         }
     }
 
+    private func field<F: View>(_ f: F) -> some View {
+        f.font(.clarionBody(16))
+            .padding(14)
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.rSM + 2))
+            .overlay(RoundedRectangle(cornerRadius: Brand.rSM + 2).stroke(Color.line2))
+    }
+
+    @ViewBuilder
     private var emailForm: some View {
         VStack(spacing: 12) {
-            TextField("Email", text: $email)
-                .textContentType(.username)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.clarionBody(16))
-                .padding(14)
-                .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.rSM + 2))
-                .overlay(RoundedRectangle(cornerRadius: Brand.rSM + 2).stroke(Color.line2))
-            SecureField("Password", text: $password)
-                .textContentType(.password)
-                .font(.clarionBody(16))
-                .padding(14)
-                .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.rSM + 2))
-                .overlay(RoundedRectangle(cornerRadius: Brand.rSM + 2).stroke(Color.line2))
+            switch stage {
+            case .email:
+                field(TextField("Email", text: $email)
+                    .textContentType(.username)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.continue)
+                    .onSubmit { Task { await checkEmail() } })
+                Button { Task { await checkEmail() } } label: {
+                    Text("Continue").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(busy || !email.contains("@"))
 
-            Button {
-                Task { await signIn() }
-            } label: {
-                Text("Sign in").frame(maxWidth: .infinity)
+            case .password, .create:
+                let creating = stage == .create
+                VStack(spacing: 4) {
+                    Text(creating ? "Create your account." : "Welcome back.")
+                        .font(.clarionDisplay(22)).foregroundStyle(Color.ink)
+                    Text(email).font(.clarionBody(13.5)).foregroundStyle(Color.ink3)
+                }
+                field(SecureField(creating ? "Choose a password (6+ characters)" : "Password", text: $password)
+                    .textContentType(creating ? .newPassword : .password))
+                Button { Task { creating ? await createAccount() : await signIn() } } label: {
+                    Text(creating ? "Create account" : "Sign in").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(busy || password.count < 6)
+                if !creating {
+                    Link("Forgot password?", destination: Config.apiBase.appendingPathComponent("reset-password"))
+                        .font(.clarionLabel(13))
+                        .foregroundStyle(Color.forest)
+                }
+                differentEmail
+
+            case .oauthOnly(let providers):
+                VStack(spacing: 4) {
+                    Text("Welcome back.").font(.clarionDisplay(22)).foregroundStyle(Color.ink)
+                    Text("\(email) signs in with \(providers.contains("google") ? "Google" : "Apple"). Use that button above.")
+                        .font(.clarionBody(14)).foregroundStyle(Color.ink2)
+                        .multilineTextAlignment(.center)
+                }
+                Link("Set a password instead", destination: Config.apiBase.appendingPathComponent("reset-password"))
+                    .font(.clarionLabel(13))
+                    .foregroundStyle(Color.forest)
+                differentEmail
+
+            case .checkInbox:
+                VStack(spacing: 6) {
+                    Text("Check your email.").font(.clarionDisplay(22)).foregroundStyle(Color.ink)
+                    Text("Tap the link we sent to \(email), then sign in here.")
+                        .font(.clarionBody(14)).foregroundStyle(Color.ink2)
+                        .multilineTextAlignment(.center)
+                }
+                Button("I've confirmed — sign in") { stage = .password }
+                    .font(.clarionLabel(14)).foregroundStyle(Color.forest)
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(busy || email.isEmpty || password.isEmpty)
-
-            Link("Forgot password?", destination: Config.apiBase.appendingPathComponent("reset-password"))
-                .font(.clarionLabel(13))
-                .foregroundStyle(Color.forest)
         }
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: stage)
+    }
+
+    private var differentEmail: some View {
+        Button("Use a different email") {
+            Haptics.tap()
+            password = ""; errorMessage = nil
+            stage = .email
+        }
+        .font(.clarionBody(13.5))
+        .foregroundStyle(Color.ink3)
+    }
+
+    private func checkEmail() async {
+        let e = email.trimmingCharacters(in: .whitespaces).lowercased()
+        guard e.contains("@") else { return }
+        email = e
+        busy = true; errorMessage = nil
+        defer { busy = false }
+        do {
+            let s = try await ClarionAPI.emailStatus(e)
+            let p = s.providers ?? []
+            if s.exists == false { stage = .create }
+            else if s.exists == true, !p.isEmpty, !p.contains("email") { stage = .oauthOnly(p) }
+            else { stage = .password }
+        } catch ClarionAPI.APIError.http(429, _) {
+            errorMessage = "Too many tries. Wait a minute."
+        } catch {
+            stage = .password // can't check — log in is the safe guess
+        }
+    }
+
+    private func createAccount() async {
+        busy = true; errorMessage = nil
+        defer { busy = false }
+        do {
+            if try await auth.signUp(email: email, password: password) == .confirmEmail { stage = .checkInbox }
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func signIn() async {

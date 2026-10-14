@@ -93,6 +93,34 @@ final class SupabaseAuth: ObservableObject {
         persist(session)
     }
 
+    enum SignUpResult { case signedIn, confirmEmail }
+
+    /// Create an email + password account (GoTrue /signup). When the project requires email
+    /// confirmation there's no session yet — the caller shows "check your email".
+    func signUp(email: String, password: String) async throws -> SignUpResult {
+        var comps = URLComponents(url: Config.supabaseURL.appendingPathComponent("auth/v1/signup"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "redirect_to", value: Config.apiBase.appendingPathComponent("auth/callback").absoluteString + "?next=/dashboard")]
+        var req = URLRequest(url: comps.url!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.httpBody = try JSONEncoder().encode(["email": email, "password": password])
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw AuthError.network("No response from Clarion — check your connection.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let err = try? JSONDecoder().decode(GoTrueError.self, from: data)
+            throw AuthError.badCredentials(err?.error_description ?? err?.msg ?? err?.message ?? "Couldn't create the account (\(http.statusCode)).")
+        }
+        // Auto-confirm projects return a session right away; otherwise just the user.
+        if (try? JSONDecoder().decode(TokenResponse.self, from: data)) != nil {
+            try await signIn(email: email, password: password)
+            return .signedIn
+        }
+        return .confirmEmail
+    }
+
     /// Native Sign in with Apple. `idToken` is the JWT from ASAuthorizationAppleIDCredential;
     /// `nonce` is the RAW nonce whose SHA256 was sent in the Apple request — GoTrue re-hashes it
     /// and matches the token's `nonce` claim. Exchanged via GoTrue's id_token grant (the same
