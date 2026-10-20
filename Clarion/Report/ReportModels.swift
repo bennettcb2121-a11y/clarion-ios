@@ -145,6 +145,8 @@ struct StackItem: Codable, Identifiable {
     /// "blood" | "blood_adjacent" | "goal" | "ask" | "waste" — the honest source of the call.
     var verdictEvidence: String?
     var verdictReason: String?
+    /// Research-backed label: "Not tested — get an Omega-3 Index", "Your plan covers it"…
+    var verdictTag: String?
     /// e.g. "below your 40–60 target" — nil when there's no lab range to anchor to.
     var targetClause: String?
     var caution: String?
@@ -195,9 +197,14 @@ struct StackItem: Codable, Identifiable {
             switch kind {
             case "add": return .need
             case "drop": return .cut
-            case "keep", "ask":
+            case "keep":
                 let ev = (verdictEvidence ?? "").lowercased()
                 return (ev == "blood" || ev == "blood_adjacent") ? .need : .maintain
+            case "ask":
+                // Web verdictBucket: a clinician-led item with a MEASURED marker (ferritin 22 →
+                // iron) is still a Need, tagged "with your doctor".
+                let ev = (verdictEvidence ?? "").lowercased()
+                return (ev == "blood" || targetClause != nil) ? .need : .maintain
             default: break
             }
         }
@@ -243,9 +250,9 @@ enum StackBucket: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .need: return "Lab-backed"
-        case .maintain: return "Keep steady"
-        case .cut: return "Consider cutting"
+        case .need: return "Need"
+        case .maintain: return "Consider"
+        case .cut: return "Consider dropping"
         }
     }
 }

@@ -68,9 +68,10 @@ struct PlanView: View {
                     todayCard(takeable).entrance(1)
                 }
 
-                group(need, title: "Lab-backed", note: "Your blood asks for these.", startIndex: 2, retest: retestByMarker)
-                group(maintain, title: "Keep steady", note: "Worth keeping — routine or training support.", startIndex: 2 + min(need.count, 1), retest: retestByMarker)
-                group(cut, title: "Consider cutting", note: "Nothing in your labs needs these.", startIndex: 3, retest: retestByMarker)
+                // Same three lists + subtitles as the web (stackVerdict VERDICT_BUCKET_*).
+                group(need, title: "Need", note: "Your blood says so.", startIndex: 2, retest: retestByMarker)
+                group(maintain, title: "Consider", note: "Could help you — or a test would decide it.", startIndex: 2 + min(need.count, 1), retest: retestByMarker)
+                group(cut, title: "Consider dropping", note: "Your labs or the research say you can skip it.", startIndex: 3, retest: retestByMarker)
 
                 Text("Educational, not medical advice. Discuss changes with your clinician.")
                     .font(.clarionBody(12))
@@ -335,7 +336,16 @@ struct StackCard: View {
                 Spacer()
             }
 
-            Text(item.reason)
+            if let tag = item.verdictTag, !tag.isEmpty {
+                Text(tag)
+                    .font(.clarionLabel(12))
+                    .foregroundStyle(Color.ink3)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.surface2, in: Capsule())
+            }
+
+            // The live, research-backed reason when the server sent one.
+            Text(item.verdictReason ?? item.reason)
                 .font(.clarionBody(14))
                 .foregroundStyle(Color.ink2)
                 .fixedSize(horizontal: false, vertical: true)

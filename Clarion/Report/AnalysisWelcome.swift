@@ -41,7 +41,7 @@ struct AnalysisWelcomeData: Decodable {
         var targetLabel: String?
         var fix: String
     }
-    struct Pick: Decodable, Hashable { var name: String; var monthlyUsd: Double; var kind: String }
+    struct Pick: Decodable, Hashable { var name: String; var monthlyUsd: Double; var kind: String; var tag: String? }
     struct Money: Decodable { var currentMonthly: Double; var planMonthly: Double; var cutMonthly: Double; var netMonthly: Double }
 
     var score: Int
@@ -354,6 +354,7 @@ struct AnalysisWelcomeSheet: View {
                 Text(empty).font(.clarionBody(13.5)).foregroundStyle(Color.ink3)
             } else {
                 ForEach(picks.prefix(5), id: \.self) { p in
+                    VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(p.name).font(.clarionLabel(14.5)).foregroundStyle(Color.ink)
                         if p.kind == "ask" {
@@ -363,6 +364,10 @@ struct AnalysisWelcomeSheet: View {
                         if p.monthlyUsd > 0 {
                             Text("\(usd(p.monthlyUsd))/mo").font(.clarionData(12.5)).foregroundStyle(Color.ink3)
                         }
+                    }
+                    if let tag = p.tag, !tag.isEmpty {
+                        Text(tag).font(.clarionBody(12)).foregroundStyle(Color.ink3)
+                    }
                     }
                 }
                 if picks.count > 5 {
