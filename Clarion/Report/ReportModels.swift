@@ -193,13 +193,18 @@ struct StackItem: Codable, Identifiable {
         // The live verdict wins when present. `evidence` is what actually distinguishes a
         // lab-backed keep from a goal-based one — kind alone collapses both to "keep", which is
         // how the whole shelf ended up in one bucket.
+        // A hormone is never a "need", whatever DHEA-S reads (Endocrine Society; web verdictBucket).
+        if name.lowercased().contains("dhea") { return verdict?.lowercased() == "drop" ? .cut : .maintain }
         if let kind = verdict?.lowercased() {
             switch kind {
             case "add": return .need
             case "drop": return .cut
             case "keep":
+                // Web verdictBucket: only an OFF-target measured marker is a Need; an in-range
+                // one ("in your 2–2.3 target") is optional maintenance → Consider.
                 let ev = (verdictEvidence ?? "").lowercased()
-                return (ev == "blood" || ev == "blood_adjacent") ? .need : .maintain
+                let inRange = (targetClause ?? "").hasPrefix("in your")
+                return ev == "blood" && !inRange ? .need : .maintain
             case "ask":
                 // Web verdictBucket: a clinician-led item with a MEASURED marker (ferritin 22 →
                 // iron) is still a Need, tagged "with your doctor".
