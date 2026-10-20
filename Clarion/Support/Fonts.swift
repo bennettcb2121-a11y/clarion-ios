@@ -33,11 +33,11 @@ enum Fonts {
     static var isAvailable: Bool { UIFont(name: semibold, size: 17) != nil }
 
     /// A Fraunces UIFont, or the system serif at the same size/weight as a safe fallback.
+    /// Display = SF Pro Bold (founder pick 2026-10-20: the whole product speaks Apple's own face,
+    /// web included). Fraunces stays bundled but unused for display.
     static func display(_ size: CGFloat, italic: Bool = false) -> UIFont {
-        if let f = UIFont(name: italic ? semiboldItalic : semibold, size: size) { return f }
-        let base = UIFont.systemFont(ofSize: size, weight: .semibold)
-        let d = base.fontDescriptor.withDesign(.serif) ?? base.fontDescriptor
-        let uf = UIFont(descriptor: d, size: size)
-        return italic ? UIFont(descriptor: d.withSymbolicTraits(.traitItalic) ?? d, size: size) : uf
+        let base = UIFont.systemFont(ofSize: size, weight: .bold)
+        guard italic, let d = base.fontDescriptor.withSymbolicTraits(.traitItalic) else { return base }
+        return UIFont(descriptor: d, size: size)
     }
 }
