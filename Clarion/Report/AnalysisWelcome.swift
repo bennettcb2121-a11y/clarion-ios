@@ -84,11 +84,18 @@ struct PaywallTeaserCard: View {
 
     private var headline: (lead: String, turn: String?) {
         let off = t.holdingBackCount, hidden = t.labNormalButOffCount
+        // Same rule as the web: no count when there aren't enough other results to hide among.
+        let tested = t.rows.filter { $0.valueLabel != "Not tested" }.count
+        if off > 0 && tested < off + 3 {
+            return hidden > 0
+                ? ("Your lab called this mostly normal.", "Clarion doesn't.")
+                : ("Your lab flagged some of this.", "Clarion shows what it means for you.")
+        }
         if off > 0 {
             let turn: String? = hidden == 0 ? nil
                 : hidden == off ? "Your lab called \(off == 1 ? "it" : "every one") normal."
                 : "Your lab called \(hidden) of them normal."
-            return ("\(off) of these \(off == 1 ? "is" : "are") holding you back.", turn)
+            return ("\(off) of your results \(off == 1 ? "is" : "are") holding you back.", turn)
         }
         if t.dropCount > 0 {
             return ("Your blood looks good.", "But \(t.dropCount) of your supplements \(t.dropCount == 1 ? "isn't" : "aren't") backed by it.")
@@ -154,7 +161,7 @@ struct PaywallTeaserCard: View {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(r.marker).font(.clarionLabel(14)).foregroundStyle(Color.ink).lineLimit(1)
-                        Text(r.valueLabel).font(.clarionData(12)).foregroundStyle(Color.ink3)
+                        Text(r.valueLabel).font(.clarionData(12)).foregroundStyle(r.valueLabel == "Not tested" ? Color.ink4 : Color.ink3)
                     }
                     Spacer(minLength: 6)
                     Text(r.lab)
