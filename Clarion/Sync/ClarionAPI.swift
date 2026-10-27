@@ -80,6 +80,25 @@ enum ClarionAPI {
         }
     }
 
+    // MARK: - Holiday gift (GET /api/gift)
+
+    /// The buyer's one-use "free analysis for a friend" code (Dec 2026 purchases only).
+    struct Gift: Decodable {
+        var eligible: Bool
+        var code: String?
+        var redeemed: Bool?
+        var link: String?
+        var shareText: String?
+    }
+
+    /// nil when not eligible or on any failure — the card simply doesn't show.
+    static func fetchGift(accessToken: String) async -> Gift? {
+        guard let data = try? await get("api/gift", accessToken: accessToken),
+              let gift = try? JSONDecoder().decode(Gift.self, from: data),
+              gift.eligible, gift.code != nil else { return nil }
+        return gift
+    }
+
     // MARK: - Settings (GET/PATCH /api/account/profile)
 
     private struct ProfileEnvelope: Decodable { var profile: ProfileSettings? }

@@ -35,6 +35,8 @@ struct HomeView: View {
     @State private var typedCount = 0
     @State private var greetingStarted = false
     @State private var didRequestHealth = false
+    /// Holiday "buy one, gift one" code — only Dec 2026 buyers get one (web: GiftCodeCard).
+    @State private var gift: ClarionAPI.Gift? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Persona-defaulted, user-overridable Home card order + visibility (persisted per user id).
     @StateObject private var layout: HomeLayoutStore
@@ -91,6 +93,7 @@ struct HomeView: View {
                             // The Brief is the fixed star — eyebrow + one large insight sentence.
                             briefHero.entrance(0)
                             addLabsCard.entrance(1)
+                            giftCard.entrance(1)
                             // Everything below reorders / hides per the persona default + user override.
                             ForEach(Array(layout.order.enumerated()), id: \.element) { i, card in
                                 customCard(card).entrance(2 + i)
@@ -206,6 +209,7 @@ struct HomeView: View {
             if case .loading = report.state { await report.load() }
             await log.load()
             await vitals.load()
+            await loadGift()
             // Ensure HealthKit is actually requested this session. The persisted
             // `healthAuthorized` flag can be stale (reinstall / fresh sign-in), which left
             // reads "not determined" and Sync doing nothing. requestAuthorization is
@@ -1009,6 +1013,43 @@ struct HomeView: View {
     }
 
     // MARK: - No labs yet (the ladder's first rung gets the whole card, not a nudge)
+
+    @ViewBuilder
+    private var giftCard: some View {
+        if let gift, let code = gift.code {
+            let redeemed = gift.redeemed == true
+            HStack(spacing: Brand.s3) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(redeemed ? "Your gift was used 🎁" : "You have a free analysis to give 🎁")
+                        .font(.clarionBody(15).weight(.semibold))
+                        .foregroundStyle(Color.ink)
+                    Text(redeemed ? "A friend unlocked their analysis." : "Code \(code) · good through Jan 31")
+                        .font(.clarionBody(13))
+                        .foregroundStyle(Color.ink2)
+                }
+                Spacer(minLength: 0)
+                if !redeemed, let text = gift.shareText {
+                    ShareLink(item: text) {
+                        Text("Send it")
+                            .font(.clarionBody(14).weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                            .background(Color.forest, in: Capsule())
+                    }
+                }
+            }
+            .padding(Brand.s4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: Brand.r))
+            .overlay(RoundedRectangle(cornerRadius: Brand.r).strokeBorder(Color.clay, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+        }
+    }
+
+    private func loadGift() async {
+        guard gift == nil, let token = try? await auth.validAccessToken() else { return }
+        gift = await ClarionAPI.fetchGift(accessToken: token)
+    }
 
     @ViewBuilder
     private var addLabsCard: some View {
