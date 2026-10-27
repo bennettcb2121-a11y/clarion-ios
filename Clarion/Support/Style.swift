@@ -345,7 +345,8 @@ struct TagPill: View {
     }
 }
 
-/// The Clarion Labs wordmark lockup: serif name over the lowercase tracked tagline.
+/// The Clarion Labs wordmark lockup: Baskerville name over the lowercase tracked tagline.
+/// BRAND CONSTANT — always Baskerville, never the app's display font (that one can change).
 struct Wordmark: View {
     var nameSize: CGFloat = 19
     var centered: Bool = false
@@ -353,7 +354,7 @@ struct Wordmark: View {
     var body: some View {
         VStack(alignment: centered ? .center : .leading, spacing: 3) {
             Text("Clarion Labs")
-                .font(.clarionDisplay(nameSize))
+                .font(.custom("Baskerville-Bold", size: nameSize))
                 .tracking(-0.015 * nameSize)
                 .foregroundStyle(Color.ink)
             Text("brilliantly clear")
