@@ -352,7 +352,8 @@ struct Wordmark: View {
     var centered: Bool = false
 
     var body: some View {
-        VStack(alignment: centered ? .center : .leading, spacing: 3) {
+        // "brilliantly clear" always sits centered under the name; `centered` only places the whole lockup.
+        VStack(alignment: .center, spacing: 3) {
             Text("Clarion Labs")
                 .font(.custom("Baskerville-Bold", size: nameSize))
                 .tracking(-0.015 * nameSize)
