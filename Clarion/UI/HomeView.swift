@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Home is the daily loop: a time-of-day greeting, readiness + ONE daily insight that
-/// connects the wearable to the blood, the next-draw countdown (endowed progress), today's
-/// doses, the victory card (the most meaningful movement across draws), ONE nudge slot max,
-/// and sync state. Pre-connect it earns the HealthKit permission with a persona-scoped
-/// primer above a preview of what's coming.
+/// Home is ONE paper sheet (web HomeHandoff `home-sheet`, Oct 2026): greeting, Today + Lab
+/// score side by side, today's doses with a lab-backed reason each, the one nudge (running
+/// low), next draw, the markers pulling the score down, the feeling check-in, and a weekly
+/// research note matched to the person's flagged markers. No stacked cards, no score dial.
+/// Pre-connect it earns the HealthKit permission with a persona-scoped primer.
 struct HomeView: View {
     let persona: Persona
     @ObservedObject var report: ReportStore
@@ -35,13 +35,7 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var libraryRoute: LibraryRoute? = nil
     @State private var showChat = false
-    @State private var showCustomize = false
-    @State private var typedCount = 0
-    @State private var greetingStarted = false
     @State private var didRequestHealth = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Persona-defaulted, user-overridable Home card order + visibility (persisted per user id).
-    @StateObject private var layout: HomeLayoutStore
     /// Today's subjective "how are you feeling?" check-in (device-local, per user + day).
     @StateObject private var feeling: FeelingStore
 
@@ -54,7 +48,6 @@ struct HomeView: View {
         // The shared session reads the Keychain synchronously, so the layout key is user-scoped
         // from the first frame.
         let userId = SupabaseAuth.shared.session?.userId
-        self._layout = StateObject(wrappedValue: HomeLayoutStore(persona: persona, userId: userId))
         self._feeling = StateObject(wrappedValue: FeelingStore(userId: userId))
     }
 
@@ -92,23 +85,16 @@ struct HomeView: View {
                             connectCard.entrance(0)
                             previewSkeleton.entrance(1)
                         } else {
-                            // The Brief is the fixed star — eyebrow + one large insight sentence.
-                            briefHero.entrance(0)
-                            addLabsCard.entrance(1)
-                            // Everything below reorders / hides per the persona default + user override.
-                            ForEach(Array(layout.order.enumerated()), id: \.element) { i, card in
-                                customCard(card).entrance(2 + i)
-                            }
-                            customizeFooter.entrance(2 + layout.order.count)
-                            libraryGrid.entrance(3 + layout.order.count)
-                            syncRow.entrance(4 + layout.order.count)
+                            homeSheet.entrance(0)
+                            syncRow.entrance(1)
                         }
-                        webFooter.entrance(9).id("home-bottom")
+                        webFooter.entrance(2).id("home-bottom")
                     }
-                    .padding(Brand.s5)
+                    .padding(.horizontal, Brand.s4)
+                    .padding(.vertical, Brand.s2)
                 }
                 .contentMargins(.bottom, 96, for: .scrollContent)
-                .background(Color.paper.ignoresSafeArea())
+                .background(Color.sheetPage.ignoresSafeArea())
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -179,8 +165,6 @@ struct HomeView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { libraryRoute = .faq }
                     } else if args.contains("UITEST_CHAT") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showChat = true }
-                    } else if args.contains("UITEST_HOME_CUSTOMIZE") {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showCustomize = true }
                     }
                     #endif
                 }
@@ -212,9 +196,6 @@ struct HomeView: View {
                         }
                     }
             }
-        }
-        .sheet(isPresented: $showCustomize) {
-            HomeCustomizeSheet(store: layout)
         }
         .task {
             if case .loading = report.state { await report.load() }
@@ -270,7 +251,23 @@ struct HomeView: View {
 
     /// The lab-safe protocol (never sells against a cut verdict) — the web's labSafeStackItems.
     private var takeableStack: [StackItem] {
-        (reportData?.stack ?? []).filter { $0.bucket != .cut }
+        let items = (reportData?.stack ?? []).filter { $0.bucket != .cut }
+        #if DEBUG
+        // Screenshot harness: `UITEST_RUNNING_LOW` gives the first vitamin D row a low bottle so
+        // the running-low section can be captured (the demo report carries no inventory).
+        if ProcessInfo.processInfo.arguments.contains("UITEST_RUNNING_LOW") {
+            var injected = false
+            return items.map { item in
+                var copy = item
+                if !injected, SupplementPresets.resolve(item.name) == "vitamin_d" {
+                    copy.supply = .init(fillPercent: 14, status: "low", daysLeft: 5, pillsRemaining: 5)
+                    injected = true
+                }
+                return copy
+            }
+        }
+        #endif
+        return items
     }
 
     private var dosesDone: Int { takeableStack.filter { log.isDone($0) }.count }
@@ -288,7 +285,8 @@ struct HomeView: View {
         }
         if !sync.lastSummary.isEmpty { return (sync.lastSummary, []) }
         #if DEBUG
-        if isUITest, case .demo(let resp) = vitals.state {
+        if isUITest, ProcessInfo.processInfo.arguments.contains("UITEST_WEARABLE"),
+           case .demo(let resp) = vitals.state {
             return (resp.snapshot.daily, resp.snapshot.workouts)
         }
         #endif
@@ -342,10 +340,15 @@ struct HomeView: View {
             lastBloodworkAt: data.lastUpdated.flatMap(VictoryCard.parseTimestamp),
             retestWeeks: data.history?.retestWeeks ?? 8
         )
+        var retestForSlot = retest
+        #if DEBUG
+        // Screenshot harness: let the injected low bottle hold the slot.
+        if ProcessInfo.processInfo.arguments.contains("UITEST_RUNNING_LOW") { retestForSlot = nil }
+        #endif
         return HomeNudge.pick(HomeNudge.Input(
-            runningLow: [], // no inventory surface on iOS yet
+            runningLow: runningLowItems,
             nextStep: nextStep,
-            retest: retest,
+            retest: retestForSlot,
             daysSinceLog: log.daysSinceLog,
             protocolTodayComplete: protocolTodayComplete,
             hasStack: !takeableStack.isEmpty,
@@ -422,174 +425,6 @@ struct HomeView: View {
         requestingAuth = false
     }
 
-    // MARK: - The Brief (the fixed hero: eyebrow + ONE large insight sentence, no competing dial)
-
-    /// Layout A — masthead + ring. The greeting is the largest thing on the screen and
-    /// TYPES IN on appear; the readiness ring + status verdict sit beneath it, secondary.
-    private var briefHero: some View {
-        VStack(alignment: .leading, spacing: Brand.s3) {
-            Text(dateEyebrow)
-                .font(.clarionLabel(11))
-                .tracking(0.14 * 11)
-                .foregroundStyle(Color.ink3)
-
-            // The masthead. Fraunces, biggest, types in with a caret.
-            Text(displayedGreeting)
-                .font(.clarionDisplay(31))
-                .tracking(-0.02 * 31)
-                .foregroundStyle(Color.ink)
-                .lineSpacing(1)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityLabel(fullGreeting)
-
-            // Readiness ring + status verdict — one calm unit, clearly below the welcome.
-            HStack(spacing: Brand.s4) {
-                if let readiness = heroReadiness {
-                    heroRing(readiness)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(readinessIsSubjective
-                         ? (feeling.word ?? HomeStatus.word(readiness: heroReadiness, persona: persona))
-                         : HomeStatus.word(readiness: heroReadiness, persona: persona))
-                        .font(.clarionDisplay(19))
-                        .tracking(-0.015 * 19)
-                        .foregroundStyle(Color.ink)
-                    Text(readinessCaption)
-                        .font(.clarionLabel(10))
-                        .tracking(0.13 * 10)
-                        .foregroundStyle(Color.ink3)
-                }
-            }
-            .padding(.top, Brand.s1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, Brand.s1)
-        .onAppear { startGreetingType() }
-    }
-
-    /// A compact readiness ring with the figure inside — the score's real treatment.
-    private func heroRing(_ value: Int) -> some View {
-        ZStack {
-            Circle().stroke(Color.forest.opacity(0.16), lineWidth: 5.5)
-            Circle()
-                .trim(from: 0, to: CGFloat(min(max(value, 0), 100)) / 100)
-                .stroke(Color.forest, style: StrokeStyle(lineWidth: 5.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            Text("\(value)")
-                .font(.clarionData(22))
-                .foregroundStyle(Color.ink)
-        }
-        .frame(width: 66, height: 66)
-    }
-
-    /// "READINESS · FULLY CHARGED" — the tier phrase mirrors the status word's band.
-    private var readinessCaption: String {
-        guard let r = heroReadiness else { return "Readiness".uppercased() }
-        if readinessIsSubjective { return "How you feel today".uppercased() }
-        let tier: String
-        switch r {
-        case 80...: tier = "Fully charged"
-        case 65..<80: tier = "Well recovered"
-        case 50..<65: tier = "Take it easy"
-        default: tier = "Rest up"
-        }
-        return "Readiness · \(tier)".uppercased()
-    }
-
-    /// "WEDNESDAY, JULY 15" — Gregorian/POSIX so a non-Gregorian device calendar can't corrupt it.
-    private var dateEyebrow: String {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "EEEE, MMMM d"
-        return f.string(from: Date()).uppercased()
-    }
-
-    /// "Good morning,\nCharlie." — time-of-day greeting + first name (demo "Charlie" under UITEST).
-    private var fullGreeting: String {
-        let name = isUITest ? "Charlie" : auth.firstName
-        if let name, !name.isEmpty { return "\(greeting),\n\(name)." }
-        return "\(greeting)."
-    }
-
-    /// The progressively-revealed greeting with a typing caret until complete.
-    private var displayedGreeting: String {
-        let shown = String(fullGreeting.prefix(typedCount))
-        return typedCount >= fullGreeting.count ? shown : shown + "\u{2009}▏"
-    }
-
-    private func startGreetingType() {
-        guard !greetingStarted else { return }
-        greetingStarted = true
-        if reduceMotion { typedCount = fullGreeting.count; return }
-        typedCount = 0
-        let total = fullGreeting.count
-        Task { @MainActor in
-            for i in 0...total {
-                typedCount = i
-                try? await Task.sleep(nanoseconds: 85_000_000)
-            }
-        }
-    }
-
-    /// The fresh readiness driving the hero word + figure. DEBUG `UITEST_READINESS=<n>` forces a
-    /// value so the screenshot harness can show every status tier without hacking the demo data.
-    private var heroReadiness: Int? {
-        #if DEBUG
-        if let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("UITEST_READINESS=") }),
-           let forced = Int(arg.dropFirst("UITEST_READINESS=".count)) {
-            return forced
-        }
-        #endif
-        // Wearable-derived readiness is authoritative; when it's quiet (no fresh reading, or
-        // no wearable at all — e.g. the simulator), the self-reported check-in fills the ring
-        // so Home is never a blank "New day."
-        if let r = brief.readiness { return r }
-        return feeling.readiness
-    }
-
-    /// True when the ring is showing the self-reported check-in rather than a wearable reading.
-    private var readinessIsSubjective: Bool {
-        brief.readiness == nil && feeling.readiness != nil
-    }
-
-    /// "WEDNESDAY · READINESS" — tracked-caps eyebrow (the figure now sits beside the hero word).
-    private var eyebrowRow: some View {
-        Text(eyebrowLead)
-            .font(.clarionLabel(11.5))
-            .tracking(0.14 * 11.5)
-            .foregroundStyle(Color.ink3)
-    }
-
-    private var eyebrowLead: String {
-        heroReadiness != nil ? "\(weekday) · Readiness".uppercased() : weekday.uppercased()
-    }
-
-    /// Weekday name (Gregorian, en_US_POSIX — never the device's Buddhist calendar).
-    private var weekday: String {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "EEEE"
-        return f.string(from: Date())
-    }
-
-    // MARK: - Customizable card dispatch (persona default order, user override wins)
-
-    @ViewBuilder
-    private func customCard(_ card: HomeCard) -> some View {
-        switch card {
-        case .feeling: feelingCard
-        case .metrics: metricRow
-        case .run: runCard
-        case .victory: victoryCardView
-        case .doses: nextDoseCard
-        case .countdown: countdownRow
-        case .nudge: nudgeCard
-        }
-    }
-
     // MARK: - Metric chip row (persona-adaptive — which three numbers lead)
 
     private struct HomeMetric: Identifiable {
@@ -610,11 +445,12 @@ struct HomeView: View {
 
     @ViewBuilder
     private var metricRow: some View {
-        let metrics = homeMetrics
+        // Score already leads the sheet top — the strip carries wearable numbers only.
+        let metrics = metricsForSheet
         if !metrics.isEmpty {
             VStack(alignment: .leading, spacing: Brand.s2 + 2) {
                 if let tuned = personaTunedLabel {
-                    Eyebrow(tuned).padding(.horizontal, Brand.s1)
+                    sheetLabel(tuned)
                 }
                 HStack(spacing: Brand.s3) {
                     ForEach(metrics) { metricChip($0) }
@@ -660,187 +496,8 @@ struct HomeView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Brand.s3)
-        .padding(.vertical, Brand.s3 + 1)
-        .clarionCardQuiet(cornerRadius: Brand.r)
+        // No chip boxes on the one sheet — the numbers sit on the paper.
     }
-
-    // MARK: - How are you feeling? (a daily self-check — drives readiness when the wearable's quiet)
-
-    private var feelingCard: some View {
-        card {
-            VStack(alignment: .leading, spacing: Brand.s3) {
-                HStack(spacing: Brand.s2) {
-                    Eyebrow("How are you feeling?")
-                    Spacer()
-                    if feeling.today != nil {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.forest)
-                    }
-                }
-                HStack(spacing: Brand.s2) {
-                    ForEach(FeelingStore.levels, id: \.level) { opt in
-                        feelingOption(opt.level, opt.label)
-                    }
-                }
-                if feeling.today != nil && brief.readiness == nil {
-                    Text("Feeding your readiness ring while your wearable's quiet.")
-                        .font(.clarionBody(12))
-                        .foregroundStyle(Color.ink3)
-                }
-            }
-        }
-    }
-
-    /// Each level's own quiet tone — a drained→great progression the eye reads before the
-    /// words do (clay → amber → neutral → forest), used for the dot and the selected wash.
-    private func feelingTone(_ level: Int) -> Color {
-        switch level {
-        case 1: return .clay
-        case 2: return .amber
-        case 3: return .ink3
-        case 4: return .forestBright
-        default: return .forest
-        }
-    }
-
-    private func feelingOption(_ level: Int, _ label: String) -> some View {
-        let selected = feeling.today == level
-        let tone = feelingTone(level)
-        return Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { feeling.set(level) }
-        } label: {
-            VStack(spacing: 4) {
-                Circle()
-                    .fill(tone.opacity(selected ? 1 : 0.4))
-                    .frame(width: 5, height: 5)
-                Text(label)
-                    .font(.clarionLabel(11))
-                    .foregroundStyle(selected ? Color.ink : Color.ink3)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, Brand.s2 + 2)
-            .background(
-                RoundedRectangle(cornerRadius: Brand.rSM)
-                    .fill(selected ? tone.opacity(0.13) : Color.ink.opacity(0.045))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Brand.rSM)
-                    .stroke(selected ? tone.opacity(0.55) : Color.clear, lineWidth: 1)
-            )
-        }
-        .buttonStyle(PressableStyle())
-    }
-
-    // MARK: - Recent run (the latest training session — endurance leads with it)
-
-    private var recentWorkout: WearableWorkout? {
-        // Same-day tiebreak on duration: a 41-minute ride should headline over the
-        // 11-minute walk logged the same afternoon (date-only max picked arbitrarily).
-        (briefWindow?.workouts ?? []).max(by: {
-            ($0.date, $0.durationMin) < ($1.date, $1.durationMin)
-        })
-    }
-
-    @ViewBuilder
-    private var runCard: some View {
-        if let w = recentWorkout {
-            card {
-                VStack(alignment: .leading, spacing: Brand.s3) {
-                    HStack {
-                        // Stable slot name; the sport moves to the meta corner ("RIDE · 4 DAYS
-                        // AGO") so the card doesn't rename itself per session type.
-                        Eyebrow("Last activity")
-                        Spacer()
-                        Text("\(sportWord(w.type).uppercased()) · \(relativeDay(w.date))")
-                            .font(.clarionLabel(10)).tracking(0.1 * 10)
-                            .foregroundStyle(Color.ink3)
-                    }
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        if let km = w.distanceKm {
-                            let d = UnitsMath.distanceParts(km: km, imperial: unitsImperial)
-                            Text(d.value).font(.clarionDisplay(28)).foregroundStyle(Color.ink)
-                            Text(d.unit).font(.clarionBody(14)).foregroundStyle(Color.ink3)
-                        } else {
-                            Text(formatMinutes(w.durationMin)).font(.clarionDisplay(28)).foregroundStyle(Color.ink)
-                        }
-                    }
-                    HStack(spacing: Brand.s5) {
-                        runStat(formatMinutes(w.durationMin), "TIME")
-                        if let m = w.primaryMetric(imperial: unitsImperial) { runStat(m.value, m.label) }
-                        if let hr = w.avgHeartRate { runStat("\(Int(hr))", "AVG HR") }
-                    }
-                }
-            }
-        } else if persona == .endurance || persona == .strength {
-            Button {
-                Haptics.tap()
-                Task { await requestHealthAccess() }
-            } label: {
-                card {
-                    HStack(spacing: Brand.s3) {
-                        Image(systemName: "figure.run")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(Color.forest)
-                            .frame(width: 40, height: 40)
-                            .background(Color.forestWash, in: RoundedRectangle(cornerRadius: Brand.rSM))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("No recent sessions").font(.clarionDisplay(16)).foregroundStyle(Color.ink)
-                            Text(requestingAuth ? "Connecting…" : "Connect Apple Health to see your training here.")
-                                .font(.clarionBody(12.5)).foregroundStyle(Color.ink3)
-                        }
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.ink4)
-                    }
-                }
-            }
-            .buttonStyle(PressableStyle())
-            .disabled(requestingAuth)
-        }
-    }
-
-    private func runStat(_ value: String, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(value).font(.clarionData(16)).foregroundStyle(Color.ink)
-            Text(label).font(.clarionLabel(9)).tracking(0.1 * 9).foregroundStyle(Color.ink3)
-        }
-    }
-
-    private func sportWord(_ type: String) -> String {
-        switch type {
-        case "run": return "Run"
-        case "ride": return "Ride"
-        case "swim": return "Swim"
-        case "strength": return "Lift"
-        case "walk": return "Walk"
-        case "hike": return "Hike"
-        case "row": return "Row"
-        default: return "Session"
-        }
-    }
-
-    /// "TODAY" / "YESTERDAY" / "N DAYS AGO" for a YYYY-MM-DD user-local workout date.
-    private func relativeDay(_ iso: String) -> String {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = .current
-        f.dateFormat = "yyyy-MM-dd"
-        guard let d = f.date(from: String(iso.prefix(10))) else { return iso.uppercased() }
-        let cal = Calendar(identifier: .gregorian)
-        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: Date())).day ?? 0
-        switch days {
-        case ..<1: return "TODAY"
-        case 1: return "YESTERDAY"
-        default: return "\(days) DAYS AGO"
-        }
-    }
-
 
     /// Age in days of the newest REAL wearable reading behind the metric row. The row shows the
     /// last known numbers, so it has to say when they aren't from today — same honesty rule the
@@ -953,367 +610,12 @@ struct HomeView: View {
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"
     }
 
-    // MARK: - Next-draw countdown (endowed progress — protocol days already banked)
-
-    @ViewBuilder
-    private var countdownRow: some View {
-        /* When the retest nudge holds the slot, the countdown would say the same thing twice. */
-        if nudge?.kind != .retest {
-            switch countdown {
-            case .scheduled(_, let nextLabel, _, _, let elapsedPct):
-                card {
-                    VStack(alignment: .leading, spacing: Brand.s2) {
-                        HStack(spacing: Brand.s2) {
-                            Eyebrow("Next draw")
-                            Text(nextLabel)
-                                .font(.clarionData(13))
-                                .foregroundStyle(Color.ink)
-                            Spacer()
-                        }
-                        if let subline = countdown.subline {
-                            Text(subline)
-                                .font(.clarionBody(13))
-                                .foregroundStyle(Color.ink2)
-                        }
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.line)
-                                Capsule()
-                                    .fill(Color.forest)
-                                    .frame(width: max(4, geo.size.width * elapsedPct / 100))
-                            }
-                        }
-                        .frame(height: 4)
-                    }
-                }
-            case .overdue(_, let nextLabel, _):
-                card {
-                    HStack(spacing: Brand.s2) {
-                        VStack(alignment: .leading, spacing: Brand.s1) {
-                            HStack(spacing: Brand.s2) {
-                                Eyebrow("Next draw")
-                                Text(nextLabel)
-                                    .font(.clarionData(13))
-                                    .foregroundStyle(Color.ink)
-                            }
-                            if let subline = countdown.subline {
-                                Text(subline)
-                                    .font(.clarionBody(13))
-                                    .foregroundStyle(Color.ink2)
-                            }
-                        }
-                        Spacer()
-                        Button {
-                            Haptics.tap()
-                            // Logbook is a NATIVE surface — open it in-app, don't bounce to the
-                            // web (that read as "the app redirected me to clarionlabs.tech").
-                            libraryRoute = .logbook
-                        } label: {
-                            Text("Plan it")
-                                .font(.clarionLabel(13))
-                                .foregroundStyle(Color.forest)
-                        }
-                        .buttonStyle(PressableStyle())
-                    }
-                }
-            case .none:
-                EmptyView()
-            }
-        }
-    }
-
-    // MARK: - No labs yet (the ladder's first rung gets the whole card, not a nudge)
-
-    @ViewBuilder
-    private var addLabsCard: some View {
-        if case .empty = report.state {
-            card {
-                VStack(alignment: .leading, spacing: Brand.s3) {
-                    Eyebrow("Next step", color: .forest)
-                    Text("Add your labs")
-                        .font(.clarionDisplay(19))
-                        .foregroundStyle(Color.ink)
-                    Text("Everything here calibrates to your blood — a photo or PDF of any panel works.")
-                        .font(.clarionBody(14))
-                        .foregroundStyle(Color.ink2)
-                    Button {
-                        addLabsSheet = true
-                    } label: {
-                        Text("Add labs").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                }
-            }
-        }
-    }
-
-    // MARK: - Today's doses
-
-    @ViewBuilder
-    private var nextDoseCard: some View {
-        if case .ready = report.state {
-            let takeable = takeableStack
-            if !takeable.isEmpty {
-                let remaining = takeable.filter { !log.isDone($0) }
-                card {
-                    VStack(alignment: .leading, spacing: Brand.s3) {
-                        HStack {
-                            Eyebrow("Protocol")
-                            Spacer()
-                            Button {
-                                Haptics.tap()
-                                tab = 3
-                            } label: {
-                                Text("See plan")
-                                    .font(.clarionLabel(13))
-                                    .foregroundStyle(Color.forest)
-                            }
-                            .buttonStyle(PressableStyle())
-                        }
-                        if let next = remaining.first {
-                            HStack(spacing: Brand.s3) {
-                                if let supply = next.supply {
-                                    BottleDrain(fillPercent: supply.fillPercent, status: supply.status)
-                                } else {
-                                    SupplementGlyph(form: .infer(name: next.name, dose: next.dose))
-                                }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(next.coherentName)
-                                        .font(.clarionDisplay(16))
-                                        .foregroundStyle(Color.ink)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.8)
-                                    Text("\(next.dose) · \(takeable.count - remaining.count) of \(takeable.count) taken today")
-                                        .font(.clarionBody(13))
-                                        .foregroundStyle(Color.ink3)
-                                }
-                                Spacer()
-                                Button {
-                                    Haptics.commit()
-                                    Task { await log.toggle(next) }
-                                } label: {
-                                    Text("Log dose")
-                                        .font(.clarionLabel(13.5))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 9)
-                                        .background(
-                                            LinearGradient(colors: [Color.forestBright, Color.forest], startPoint: .top, endPoint: .bottom),
-                                            in: Capsule()
-                                        )
-                                        .frame(minHeight: 44) // 44pt hit target; visual capsule stays ~31pt
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(PressableStyle(haptic: false))
-                            }
-                        } else {
-                            HStack(spacing: Brand.s2) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(Color.forest)
-                                Text("All \(takeable.count) doses logged for today.")
-                                    .font(.clarionBody(14.5))
-                                    .foregroundStyle(Color.ink2)
-                            }
-                        }
-
-                        // Running-low signal from tracked bottles — the home-page bottle-drain
-                        // summary. One quiet, tappable line; silent when everything's stocked.
-                        if lowSupplyCount > 0 {
-                            Button {
-                                Haptics.tap()
-                                tab = 3
-                            } label: {
-                                HStack(spacing: Brand.s2) {
-                                    Image(systemName: "arrow.triangle.2.circlepath.circle")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.clay)
-                                    Text(lowSupplyLabel)
-                                        .font(.clarionBody(13))
-                                        .foregroundStyle(Color.clay)
-                                    Spacer(minLength: 0)
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(Color.clay.opacity(0.6))
-                                }
-                                .padding(.top, 2)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PressableStyle())
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// Stack items whose tracked bottle is low or out — drives the Home running-low line.
-    private var lowSupplyCount: Int {
-        takeableStack.filter { ($0.supply?.status == "low") || ($0.supply?.status == "out") }.count
-    }
-
-    private var lowSupplyLabel: String {
-        let out = takeableStack.filter { $0.supply?.status == "out" }.count
-        if out > 0 && out == lowSupplyCount {
-            return out == 1 ? "1 supplement is out — reorder" : "\(out) supplements are out — reorder"
-        }
-        return lowSupplyCount == 1 ? "1 supplement running low" : "\(lowSupplyCount) supplements running low"
-    }
-
-    // MARK: - Victory / delta card (between draws)
-
-    @ViewBuilder
-    private var victoryCardView: some View {
-        if let victory {
-            switch victory {
-            case .anticipation(let headline, let body):
-                card {
-                    VStack(alignment: .leading, spacing: Brand.s2) {
-                        Eyebrow("Between draws")
-                        Text(headline)
-                            .font(.clarionDisplay(19))
-                            .foregroundStyle(Color.ink)
-                        Text(body)
-                            .font(.clarionBody(14))
-                            .foregroundStyle(Color.ink2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            case .improved(let delta):
-                victoryDeltaCard(delta, improved: true)
-            case .regressed(let delta):
-                victoryDeltaCard(delta, improved: false)
-            }
-        }
-    }
-
-    private func victoryDeltaCard(_ delta: VictoryCard.Delta, improved: Bool) -> some View {
-        card {
-            VStack(alignment: .leading, spacing: Brand.s3) {
-                HStack {
-                    Eyebrow("Between draws")
-                    Spacer()
-                    if improved {
-                        TagPill("Improved", tone: .forest, wash: .forestWash)
-                    } else {
-                        TagPill("Drifting", tone: .clay, wash: .clayWash)
-                    }
-                }
-                Text(delta.marker)
-                    .font(.clarionDisplay(19))
-                    .foregroundStyle(Color.ink)
-                HStack(alignment: .firstTextBaseline, spacing: Brand.s2) {
-                    Text(delta.from)
-                        .font(.clarionData(20))
-                        .foregroundStyle(Color.ink3)
-                    Text("→")
-                        .font(.clarionBody(15))
-                        .foregroundStyle(Color.ink3)
-                    Text(delta.to)
-                        .font(.clarionData(24))
-                        .foregroundStyle(improved ? Color.forestInk : Color.clay)
-                    if !delta.unit.isEmpty {
-                        Text(delta.unit)
-                            .font(.clarionBody(12))
-                            .foregroundStyle(Color.ink3)
-                    }
-                    Text("since \(delta.sinceLabel)")
-                        .font(.clarionBody(12))
-                        .foregroundStyle(Color.ink3)
-                }
-                Text(delta.body)
-                    .font(.clarionBody(14))
-                    .foregroundStyle(Color.ink2)
-                    .fixedSize(horizontal: false, vertical: true)
-                victoryStrip(delta.visual, improved: improved)
-            }
-        }
-    }
-
-    /// The before→after strip on the honest axis: optimal band wash + from/to dots.
-    private func victoryStrip(_ visual: VictoryCard.Visual, improved: Bool) -> some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let x = { (pct: Double) in w * pct / 100 }
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.paperDim).frame(height: 6)
-                if let bandStart = visual.bandStartPct, let bandEnd = visual.bandEndPct, bandEnd > bandStart {
-                    Capsule()
-                        .fill(Color.forestWash)
-                        .frame(width: x(bandEnd - bandStart), height: 6)
-                        .offset(x: x(bandStart))
-                }
-                Rectangle()
-                    .fill(Color.ink4)
-                    .frame(width: abs(x(visual.toPct) - x(visual.fromPct)), height: 2)
-                    .offset(x: x(min(visual.fromPct, visual.toPct)))
-                Circle()
-                    .fill(Color.ink4)
-                    .frame(width: 8, height: 8)
-                    .offset(x: x(visual.fromPct) - 4)
-                Circle()
-                    .fill(improved ? Color.forest : Color.clay)
-                    .frame(width: 10, height: 10)
-                    .offset(x: x(visual.toPct) - 5)
-            }
-            .frame(height: 10)
-        }
-        .frame(height: 10)
-        .padding(.top, 2)
-    }
-
-    // MARK: - The ONE nudge slot
-
-    @ViewBuilder
-    private var nudgeCard: some View {
-        if let nudge {
-            card {
-                HStack(alignment: .top, spacing: Brand.s3) {
-                    VStack(alignment: .leading, spacing: Brand.s2) {
-                        Eyebrow(nudge.kicker, color: .forest)
-                        Text(nudge.headline)
-                            .font(.clarionDisplay(17))
-                            .foregroundStyle(Color.ink)
-                        Text(nudge.body)
-                            .font(.clarionBody(13.5))
-                            .foregroundStyle(Color.ink2)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Button {
-                            Haptics.tap()
-                            handleNudgeAction(nudge)
-                        } label: {
-                            Text(nudge.ctaLabel)
-                                .font(.clarionLabel(13.5))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 9)
-                                .background(
-                                    LinearGradient(colors: [Color.forestBright, Color.forest], startPoint: .top, endPoint: .bottom),
-                                    in: Capsule()
-                                )
-                        }
-                        .buttonStyle(PressableStyle(haptic: false))
-                        .padding(.top, 2)
-                    }
-                    Spacer(minLength: 0)
-                    if nudge.dismissible {
-                        Button {
-                            Haptics.tap()
-                            nudgeDismissedDay = ProtocolLogStore.todayKey()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.ink4)
-                                .padding(6)
-                        }
-                        .buttonStyle(PressableStyle(haptic: false))
-                        .accessibilityLabel("Dismiss for today")
-                    }
-                }
-            }
-        }
-    }
-
     private func handleNudgeAction(_ nudge: HomeNudge) {
+        if nudge.kind == .supply {
+            // Reorder lives in the Shop tab (the web's reorder-shelf action).
+            tab = 4
+            return
+        }
         switch nudge.href {
         case "/dashboard/analysis":
             tab = 2
@@ -1338,26 +640,26 @@ struct HomeView: View {
     // MARK: - Sync state (one quiet row, not a card of chrome)
 
     private var syncRow: some View {
-        card {
+        VStack {
             HStack(spacing: Brand.s2) {
                 switch sync.status {
                 case .idle:
                     Image(systemName: sync.lastSyncedAt == nil ? "arrow.triangle.2.circlepath" : "checkmark.circle")
                         .foregroundStyle(Color.forest)
                     Text(sync.lastSyncedAt == nil ? "Not synced yet" : "Everything up to date")
-                        .font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
+                        .font(.clarionBody(13)).foregroundStyle(Color.ink3)
                 case .syncing:
                     ProgressView().controlSize(.small)
-                    Text("Syncing…").font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
+                    Text("Syncing…").font(.clarionBody(13)).foregroundStyle(Color.ink3)
                 case .done(let daily, let workouts, _):
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.forest)
                     Text(daily == 0 && workouts == 0
                          ? "Up to date — no new wearable data"
                          : "Synced \(daily) days, \(workouts) workouts")
-                        .font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
+                        .font(.clarionBody(13)).foregroundStyle(Color.ink3)
                 case .failed(let message):
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.amber)
-                    Text(message).font(.clarionBody(14.5)).foregroundStyle(Color.ink3)
+                    Text(message).font(.clarionBody(13)).foregroundStyle(Color.ink3)
                 }
                 Spacer()
                 Button("Sync") {
@@ -1371,28 +673,10 @@ struct HomeView: View {
                 .buttonStyle(PressableStyle())
                 .disabled(sync.status == .syncing)
             }
+            .font(.clarionBody(13))
         }
-    }
-
-    // MARK: - Customize affordance (a calm footer row — the Library moved to the toolbar icon,
-    // so Home reads as a daily brief, not a launcher grid)
-
-    private var customizeFooter: some View {
-        Button {
-            Haptics.tap()
-            showCustomize = true
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Customize home")
-                    .font(.clarionLabel(13))
-            }
-            .foregroundStyle(Color.ink3)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, Brand.s2)
-        }
-        .buttonStyle(PressableStyle())
+        .padding(.horizontal, Brand.s2)
+        .padding(.top, Brand.s2)
     }
 
     // MARK: - The web, demoted to a quiet footer
@@ -1426,65 +710,702 @@ struct HomeView: View {
         await UIApplication.shared.open(url)
     }
 
+    // MARK: - The one sheet (web .home-sheet)
+
+    /// Baskerville — the web's `--font-logo` (Libre Baskerville). iOS ships Apple's Baskerville,
+    /// the same face the locked wordmark already uses.
+    private static func serif(_ size: CGFloat, bold: Bool = false) -> Font {
+        .custom(bold ? "Baskerville-Bold" : "Baskerville", size: size)
+    }
+
+    /// Section label — 11pt bold, 0.16em tracked caps.
+    private func sheetLabel(_ text: String, color: Color = .ink3) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 11, weight: .bold))
+            .tracking(0.16 * 11)
+            .foregroundStyle(color)
+    }
+
+    /// Outline pill — forest text, thin forest border, never a filled button.
+    private func outlinePill(_ text: String, systemImage: String? = nil, arrow: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            if let systemImage {
+                Image(systemName: systemImage).font(.system(size: 11, weight: .heavy))
+            }
+            Text(text).font(.system(size: 13, weight: .semibold))
+            if arrow { Text("→").font(.system(size: 13, weight: .semibold)) }
+        }
+        .foregroundStyle(Color.forest)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .overlay(Capsule().stroke(Color.forest.opacity(0.35), lineWidth: 1))
+        .contentShape(Capsule())
+    }
+
+    private var homeSheet: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sheetTop
+            sheetSection(!metricsForSheet.isEmpty) { metricRow }
+            sheetSection(!takeableStack.isEmpty) { dosesSection }
+            sheetSection(nudge != nil) { nudgeSection }
+            sheetSection(reportData != nil) { nextDrawSection }
+            sheetSection(!sheetMarkers.isEmpty) { markersSection }
+            sheetSection(true) { feelingSection }
+            sheetSection(weeklyNote != nil) { weeklyNoteSection }
+            // Web: the victory card carries `order: 2`, so it lands at the end of the sheet.
+            sheetSection(victory != nil) { victorySection }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.top, 22)
+        .padding(.bottom, 26)
+        .background(Color.sheetPaper, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: Color.sheetShadow.opacity(0.05), radius: 4, y: 2)
+        .shadow(color: Color.sheetShadow.opacity(0.16), radius: 22, y: 16)
+    }
+
+    /// Each section after the top sits 32pt below the previous one — no dividers, no cards.
+    @ViewBuilder
+    private func sheetSection<Content: View>(_ show: Bool, @ViewBuilder _ content: () -> Content) -> some View {
+        if show {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 32)
+        }
+    }
+
+    // 1 + 2 — greeting and the Today / Lab score pair
+
+    private var greetingLine: String {
+        let name = isUITest ? "Charlie" : auth.firstName
+        if let name, !name.isEmpty { return "\(greeting), \(name)." }
+        return "\(greeting)."
+    }
+
+    private var labScore: Int? {
+        guard let data = reportData else { return nil }
+        if let results = data.results, !results.isEmpty { return ScoreEngine.score(results) }
+        return data.score
+    }
+
+    private var flaggedCount: Int { (reportData?.results ?? []).filter(\.isFlagged).count }
+    private var inRangeCount: Int { (reportData?.results ?? []).filter { $0.status == "optimal" }.count }
+
+    /// "Oct 2" — the latest draw date (history first, else the save timestamp).
+    private var labDateLabel: String? {
+        if let iso = reportData?.history?.lastDrawIso, !iso.isEmpty {
+            return NextDrawCountdown.labelFor(iso)
+        }
+        guard let raw = reportData?.lastUpdated, let d = VictoryCard.parseTimestamp(raw) else { return nil }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d"
+        return f.string(from: d)
+    }
+
+    private var showReadinessColumn: Bool { brief.wearableDay && brief.readiness != nil }
+
+    private var sheetTop: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(greetingLine)
+                .font(Self.serif(17))
+                .foregroundStyle(Color.ink3)
+            HStack(alignment: .top, spacing: 0) {
+                todayColumn
+                hairline
+                labColumn
+                if showReadinessColumn {
+                    hairline
+                    readinessColumn
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(Color.ink.opacity(0.12))
+            .frame(width: 1)
+            .padding(.trailing, showReadinessColumn ? 12 : 14)
+            .padding(.leading, 12)
+    }
+
+    private var bigSize: CGFloat { showReadinessColumn ? 30 : 42 }
+
+    private func bigNumber(_ value: String, suffix: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(value)
+                .font(Self.serif(bigSize, bold: true))
+                .tracking(-0.03 * bigSize)
+                .foregroundStyle(Color.ink)
+            if let suffix {
+                Text(suffix)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.ink3)
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+
+    private var todayColumn: some View {
+        let total = takeableStack.count
+        return VStack(alignment: .leading, spacing: 0) {
+            sheetLabel("Today", color: .forest)
+            bigNumber(total > 0 ? "\(dosesDone)" : "—", suffix: total > 0 ? "/\(total)" : nil)
+            if total > 0 {
+                let streak = log.streakDays(todayComplete: protocolTodayComplete)
+                Text("taken" + (streak >= 2 ? " · \(streak)-day streak" : ""))
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.ink3)
+            } else {
+                Button {
+                    Haptics.tap()
+                    tab = 3
+                } label: {
+                    Text("Build your plan →")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.forest)
+                }
+                .buttonStyle(PressableStyle())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var labColumn: some View {
+        Button {
+            Haptics.tap()
+            if labScore == nil { addLabsSheet = true } else { tab = 2 }
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                sheetLabel("Lab score", color: .forest)
+                bigNumber(labScore.map(String.init) ?? "—", suffix: labScore == nil ? nil : "/100")
+                if labScore == nil {
+                    Text("Add your labs →")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.forest)
+                } else {
+                    Text([labDateLabel, flaggedCount > 0 ? "\(flaggedCount) low" : "\(inRangeCount) in range"]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.ink3)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityHint(labScore == nil ? "Adds your labs" : "Opens your report")
+    }
+
+    private var readinessColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sheetLabel("Readiness", color: .forest)
+            bigNumber(brief.readiness.map(String.init) ?? "—", suffix: nil)
+            Text(brief.readinessWord ?? "from your wearable")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.ink3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // Vitals strip — real readings only (web HomeVitalsStrip)
+
+    private var metricsForSheet: [HomeMetric] {
+        homeMetrics.filter { $0.id != "score" }
+    }
+
+    // 3 — today's doses
+
+    private var doseReasons: [String: String] {
+        let results = reportData?.results ?? []
+        var out: [String: String] = [:]
+        for item in takeableStack {
+            if let r = HomeSheet.doseReason(supplementName: item.name, results: results) { out[item.name] = r }
+        }
+        return out
+    }
+
+    private var dosesSection: some View {
+        let items = takeableStack
+        let total = items.count
+        let done = dosesDone
+        let reasons = doseReasons
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                sheetLabel("Today's doses")
+                Spacer(minLength: 8)
+                (Text("\(done)").fontWeight(.bold).foregroundColor(Color.ink)
+                 + Text(" of \(total) logged" + (done == total ? " — nice work" : "")))
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.ink3)
+            }
+            if done < total {
+                Button {
+                    Haptics.commit()
+                    Task { await log.markAllDone(items) }
+                } label: {
+                    outlinePill(done == 0 ? "Took everything today" : "Took the rest (\(total - done))", systemImage: "checkmark")
+                }
+                .buttonStyle(PressableStyle(haptic: false))
+                .padding(.top, 12)
+                .padding(.bottom, 6)
+            }
+            VStack(spacing: 0) {
+                ForEach(items) { item in
+                    doseRow(item, reason: reasons[item.name])
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func doseRow(_ item: StackItem, reason: String?) -> some View {
+        let done = log.isDone(item)
+        return Button {
+            Haptics.commit()
+            Task { await log.toggle(item) }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(done ? Color.forest : Color.clear)
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(done ? Color.forest : Color.ink.opacity(0.22), lineWidth: 1.3)
+                    if done {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 22, height: 22)
+                BottleArt(presetId: SupplementPresets.resolve(item.name) ?? "")
+                    .frame(width: 34, height: 44)
+                    .shadow(color: Color.sheetShadow.opacity(0.22), radius: 1.5, y: 2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.coherentName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(done ? Color.ink3 : Color.ink)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    if let reason {
+                        Text(reason)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.ink3)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                }
+                Spacer(minLength: 8)
+                Text(item.dose)
+                    .font(.system(size: 12.5, design: .monospaced))
+                    .foregroundStyle(Color.ink3)
+                    .lineLimit(1)
+            }
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle(haptic: false))
+        .accessibilityLabel("\(item.coherentName), \(item.dose)\(done ? ", taken" : "")")
+    }
+
+    // 4 — the one nudge (running low gets its drained bottle)
+
+    private var lowItems: [StackItem] {
+        takeableStack
+            .filter { $0.supply?.status == "low" || $0.supply?.status == "out" }
+            .sorted { ($0.supply?.daysLeft ?? 0) < ($1.supply?.daysLeft ?? 0) }
+    }
+
+    private var runningLowItems: [HomeNudge.RunningLowItem] {
+        lowItems.map { .init(name: $0.coherentName, daysLeft: $0.supply?.status == "out" ? 0 : ($0.supply?.daysLeft ?? 0)) }
+    }
+
+    /// "Vitamin D3 (softgels)" → "Vitamin D3" — the short shelf label under the bottle.
+    private func shelfLabel(_ name: String) -> String {
+        let base = name.components(separatedBy: " — ").first ?? name
+        return HomeSheet.shortName(base)
+    }
+
+    @ViewBuilder
+    private var nudgeSection: some View {
+        if let nudge {
+            let isSupply = nudge.kind == .supply
+            VStack(alignment: .trailing, spacing: 14) {
+                HStack(alignment: .top, spacing: 16) {
+                    if isSupply, !lowItems.isEmpty {
+                        VStack(spacing: 10) {
+                            ForEach(lowItems.prefix(2)) { item in
+                                lowBottle(item)
+                            }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        sheetLabel(nudge.kicker, color: isSupply ? .clay : .forest)
+                        Text(nudge.headline)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !nudge.body.isEmpty {
+                            Text(nudge.body)
+                                .font(.system(size: 13.5))
+                                .foregroundStyle(Color.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.top, 6)
+                    Spacer(minLength: 0)
+                    if nudge.dismissible {
+                        Button {
+                            Haptics.tap()
+                            nudgeDismissedDay = ProtocolLogStore.todayKey()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.ink4)
+                                .padding(6)
+                        }
+                        .buttonStyle(PressableStyle(haptic: false))
+                        .accessibilityLabel("Dismiss for today")
+                    }
+                }
+                Button {
+                    Haptics.tap()
+                    handleNudgeAction(nudge)
+                } label: {
+                    outlinePill(nudge.ctaLabel, arrow: true)
+                }
+                .buttonStyle(PressableStyle(haptic: false))
+            }
+        }
+    }
+
+    /// The bottle drawn partly emptied to its real fill level (web mask: lvl × .74 + 10%).
+    private func lowBottle(_ item: StackItem) -> some View {
+        let supply = item.supply
+        let fill = max(0, min(100, supply?.fillPercent ?? 0))
+        let visible = (fill * 0.74 + 10) / 100
+        let out = supply?.status == "out"
+        return VStack(spacing: 3) {
+            BottleArt(presetId: SupplementPresets.resolve(item.name) ?? "")
+                .frame(width: 40, height: 54)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0),
+                            .init(color: .black, location: visible),
+                            .init(color: .black.opacity(0.1), location: visible),
+                            .init(color: .black.opacity(0.1), location: 1),
+                        ],
+                        startPoint: .bottom, endPoint: .top
+                    )
+                )
+            Text(shelfLabel(item.coherentName))
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Color.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: 64)
+            Text(out ? "Out" : "\(supply?.daysLeft ?? 0)d left")
+                .font(.system(size: 11.5))
+                .foregroundStyle(out ? Color.clay : Color.amber)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // 5 — next draw
+
+    @ViewBuilder
+    private var nextDrawSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            switch countdown {
+            case .scheduled(_, let nextLabel, _, _, _):
+                drawLine(nextLabel)
+                if let sub = countdown.subline { drawSub(sub) }
+            case .overdue(_, let nextLabel, _):
+                drawLine(nextLabel)
+                if let sub = countdown.subline { drawSub(sub) }
+                drawLink("Plan it →")
+            case .none:
+                drawLine(nil)
+                drawSub("Nothing scheduled — give the protocol a finish line.")
+                drawLink("Pick a date →")
+            }
+        }
+    }
+
+    private func drawLine(_ date: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            sheetLabel("Next draw")
+            if let date {
+                Text(date)
+                    .font(Self.serif(18, bold: true))
+                    .tracking(-0.01 * 18)
+                    .foregroundStyle(Color.ink)
+            }
+        }
+    }
+
+    private func drawSub(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13))
+            .foregroundStyle(Color.ink3)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func drawLink(_ text: String) -> some View {
+        Button {
+            Haptics.tap()
+            // Logbook is a NATIVE surface — open it in-app, don't bounce to the web.
+            libraryRoute = .logbook
+        } label: {
+            Text(text)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.forest)
+        }
+        .buttonStyle(PressableStyle())
+    }
+
+    // 6 — markers: flagged first (most severe), then in-range wins, four max (web pickHomeHandoffMarkers)
+
+    private var sheetMarkers: [BiomarkerResult] {
+        let results = (reportData?.results ?? []).filter { $0.status != "unknown" }
+        let flagged = results.filter(\.isFlagged).sorted { $0.sortRank < $1.sortRank }
+        let wins = results.filter { $0.status == "optimal" }
+        return Array((flagged + wins).prefix(4))
+    }
+
+    private func rangeLabel(_ m: BiomarkerResult) -> String {
+        switch (m.optimalMin, m.optimalMax) {
+        case let (lo?, hi?): return "\(HomeSheet.fmt(lo))–\(HomeSheet.fmt(hi))"
+        case let (lo?, nil): return "over \(HomeSheet.fmt(lo))"
+        case let (nil, hi?): return "under \(HomeSheet.fmt(hi))"
+        default: return m.statusLabel
+        }
+    }
+
+    private var markersSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                Text((flaggedCount > 0 ? "What's pulling your lab score down" : "Markers").uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(0.16 * 11)
+                    .lineSpacing(4)
+                    .foregroundStyle(Color.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button {
+                    Haptics.tap()
+                    tab = 2
+                } label: {
+                    Text("See all →")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.forest)
+                        .fixedSize()
+                }
+                .buttonStyle(PressableStyle())
+            }
+            .padding(.bottom, 6)
+            ForEach(sheetMarkers) { m in
+                Button {
+                    Haptics.tap()
+                    tab = 2
+                } label: {
+                    HStack(alignment: .center, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(m.isFlagged ? Color.clay : Color.forest)
+                                    .frame(width: 6, height: 6)
+                                Text(m.name)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color.ink2)
+                                    .lineLimit(1)
+                            }
+                            Text(rangeLabel(m))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.ink3)
+                                .padding(.leading, 14)
+                        }
+                        Spacer(minLength: 8)
+                        Text([HomeSheet.fmt(m.value), m.unit].compactMap { $0 }.joined(separator: " "))
+                            .font(Self.serif(19, bold: true))
+                            .tracking(-0.01 * 19)
+                            .foregroundStyle(Color.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                    .padding(.vertical, 13)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableStyle())
+            }
+        }
+    }
+
+    // 7 — how are you feeling (the existing device-local check-in)
+
+    private func feelingTone(_ level: Int) -> Color {
+        switch level {
+        case 1: return .clay
+        case 2: return .amber
+        case 3: return .ink3
+        case 4: return .forestBright
+        default: return .forest
+        }
+    }
+
+    private var feelingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sheetLabel("How are you feeling?")
+            HStack(spacing: 6) {
+                ForEach(FeelingStore.levels, id: \.level) { opt in
+                    feelingPill(opt.level, opt.label)
+                }
+            }
+        }
+    }
+
+    private func feelingPill(_ level: Int, _ label: String) -> some View {
+        let selected = feeling.today == level
+        let tone = feelingTone(level)
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { feeling.set(level) }
+        } label: {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(tone.opacity(selected ? 1 : 0.45))
+                    .frame(width: 4, height: 4)
+                Text(label)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(selected ? Color.ink : Color.ink2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 2)
+            .background(Capsule().fill(selected ? tone.opacity(0.13) : Color.surface))
+            .overlay(Capsule().stroke(selected ? tone.opacity(0.55) : Color.line2, lineWidth: 1))
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    // 8 — for you this week (only when a flagged marker matches a cited note)
+
+    private var weeklyNote: HomeSheet.WeeklyNote? {
+        HomeSheet.pickWeeklyNote(results: reportData?.results ?? [], dateKey: ProtocolLogStore.todayKey())
+    }
+
+    @ViewBuilder
+    private var weeklyNoteSection: some View {
+        if let note = weeklyNote {
+            VStack(alignment: .leading, spacing: 6) {
+                sheetLabel("For you this week · \(note.marker)", color: .forest)
+                Text(note.headline)
+                    .font(Self.serif(19, bold: true))
+                    .tracking(-0.01 * 19)
+                    .lineSpacing(3)
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(note.body)
+                    .font(.system(size: 14))
+                    .lineSpacing(3)
+                    .foregroundStyle(Color.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(note.source)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.ink4)
+                    .padding(.top, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 22)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color.ink.opacity(0.09)).frame(height: 1)
+            }
+        }
+    }
+
+    // Between draws (web keeps it, at the end of the sheet)
+
+    @ViewBuilder
+    private var victorySection: some View {
+        if let victory {
+            VStack(alignment: .leading, spacing: 8) {
+                sheetLabel("Between draws")
+                switch victory {
+                case .anticipation(let headline, let body):
+                    Text(headline)
+                        .font(Self.serif(19, bold: true))
+                        .foregroundStyle(Color.ink)
+                    Text(body)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .improved(let delta):
+                    victoryDelta(delta, improved: true)
+                case .regressed(let delta):
+                    victoryDelta(delta, improved: false)
+                }
+            }
+        }
+    }
+
+    private func victoryDelta(_ delta: VictoryCard.Delta, improved: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(delta.marker)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.ink2)
+                Text(improved ? "Improved" : "Drifting")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(0.1 * 11)
+                    .textCase(.uppercase)
+                    .foregroundStyle(improved ? Color.forest : Color.clay)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(delta.from)
+                    .font(Self.serif(19, bold: true))
+                    .foregroundStyle(Color.ink3)
+                Text("→").font(.system(size: 15)).foregroundStyle(Color.ink3)
+                Text(delta.to)
+                    .font(Self.serif(23, bold: true))
+                    .foregroundStyle(improved ? Color.forestInk : Color.clay)
+                if !delta.unit.isEmpty {
+                    Text(delta.unit).font(.system(size: 12)).foregroundStyle(Color.ink3)
+                }
+                Text("since \(delta.sinceLabel)").font(.system(size: 12)).foregroundStyle(Color.ink3)
+            }
+            Text(delta.body)
+                .font(.system(size: 14))
+                .foregroundStyle(Color.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Brand.s4 + 2)
             .clarionCard()
     }
+}
 
-    // MARK: - Library (the six reference surfaces, surfaced on Home so they're findable —
-    // not hidden behind a toolbar glyph). A labeled section + 2-column grid; each tile
-    // deep-links straight to its surface, with the hub kept underneath (back lands on the list).
+// MARK: - One-sheet paper colors (web .home-sheet: page #F4EFE7, sheet #FBF7F0)
 
-    private var libraryGrid: some View {
-        VStack(alignment: .leading, spacing: Brand.s3) {
-            Text("LIBRARY")
-                .font(.clarionLabel(11.5))
-                .tracking(0.14 * 11.5)
-                .foregroundStyle(Color.ink3)
-                .padding(.leading, 2)
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: Brand.s3),
-                          GridItem(.flexible(), spacing: Brand.s3)],
-                spacing: Brand.s3
-            ) {
-                libraryTile(.labs, icon: "chart.line.uptrend.xyaxis", title: "Labs history")
-                libraryTile(.biomarkers, icon: "drop", title: "Biomarkers")
-                libraryTile(.dailyInputs, icon: "sun.max", title: "Daily inputs")
-                libraryTile(.logbook, icon: "calendar", title: "Logbook")
-                libraryTile(.guides, icon: "book", title: "Guides")
-                libraryTile(.faq, icon: "questionmark.circle", title: "FAQ & support")
-            }
-        }
-        .padding(.top, Brand.s2)
-        .id("home-library")
-    }
-
-    private func libraryTile(_ route: LibraryRoute, icon: String, title: String) -> some View {
-        Button {
-            Haptics.tap()
-            libraryRoute = route
-        } label: {
-            HStack(spacing: Brand.s3) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color.forest)
-                    .frame(width: 32, height: 32)
-                    .background(Color.forestWash, in: RoundedRectangle(cornerRadius: Brand.rSM))
-                Text(title)
-                    .font(.clarionDisplay(14.5))
-                    .tracking(-0.015 * 14.5)
-                    .foregroundStyle(Color.ink)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-            .padding(Brand.s3 + 2)
-            .clarionCard()
-        }
-        .buttonStyle(PressableStyle())
-    }
+extension Color {
+    static let sheetPage = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x0F1614) : UIColor(hex: 0xF4EFE7) })
+    static let sheetPaper = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x15201C) : UIColor(hex: 0xFBF7F0) })
+    /// Warm brown shadow (web rgba(60,44,20,…)); black in dark mode.
+    static let sheetShadow = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: 0x000000) : UIColor(hex: 0x3C2C14) })
 }

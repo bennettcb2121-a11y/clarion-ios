@@ -106,19 +106,33 @@ final class ProtocolLogStore: ObservableObject {
     func toggle(_ item: StackItem) async {
         let key = item.protocolKey
         let newValue = !isDone(item)
-        let previous = checks
-        checks[key] = newValue
+        var changes: [String: Bool] = [key: newValue]
         // Clear a legacy name-key so unchecking actually unchecks rows logged by name.
-        if !newValue { checks[item.name] = false }
+        if !newValue { changes[item.name] = false }
+        await write(changes)
+    }
+
+    /// "Took everything today" — marks every not-yet-done row in ONE merged write
+    /// (the web's logAll). Rows already checked are left alone.
+    func markAllDone(_ items: [StackItem]) async {
+        var changes: [String: Bool] = [:]
+        for item in items where !isDone(item) { changes[item.protocolKey] = true }
+        guard !changes.isEmpty else { return }
+        await write(changes)
+    }
+
+    /// Optimistic merge-write of a set of check keys against today's server row.
+    private func write(_ changes: [String: Bool]) async {
+        let previous = checks
+        for (k, v) in changes { checks[k] = v }
 
         do {
             guard let session = auth.session else { throw AuthError.noSession }
             let token = try await auth.validAccessToken()
 
-            // Merge against the freshest server state, changing only this row's key(s).
+            // Merge against the freshest server state, changing only these keys.
             var merged = (try? await fetchTodayChecks()) ?? previous
-            merged[key] = newValue
-            if !newValue { merged[item.name] = false }
+            for (k, v) in changes { merged[k] = v }
 
             var comps = URLComponents(url: Config.supabaseURL.appendingPathComponent("rest/v1/protocol_log"), resolvingAgainstBaseURL: false)!
             comps.queryItems = [URLQueryItem(name: "on_conflict", value: "user_id,log_date")]
@@ -143,6 +157,10 @@ final class ProtocolLogStore: ObservableObject {
             }
             checks = merged
         } catch {
+            #if DEBUG
+            // Screenshot harness has no session — keep the optimistic state so taps are visible.
+            if ProcessInfo.processInfo.arguments.contains("UITEST_VITALS") { return }
+            #endif
             checks = previous // revert the optimistic flip
             Haptics.warning()
         }
