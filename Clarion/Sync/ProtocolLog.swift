@@ -17,6 +17,11 @@ final class ProtocolLogStore: ObservableObject {
     @Published private(set) var recentDays: [String: Bool] = [:]
     /// Newest log_date on file (any row counts, like the web's lastLogDate memo).
     @Published private(set) var lastLogDate: String?
+    /// Per-day checks for the last 14 rows (local YYYY-MM-DD → checks) — the smart-insights
+    /// engine reads these for per-supplement missed nights and clean streaks.
+    @Published private(set) var dayChecks: [String: [String: Bool]] = [:]
+    /// Oldest log_date in the recent window — the "earn it first" clock.
+    @Published private(set) var oldestLogDate: String?
 
     private let auth: SupabaseAuth
 
@@ -42,11 +47,15 @@ final class ProtocolLogStore: ObservableObject {
         }
         if let rows = try? await fetchRecentRows() {
             var byDate: [String: Bool] = [:]
+            var perDay: [String: [String: Bool]] = [:]
             for row in rows {
                 byDate[row.date] = row.checks.values.contains(true)
+                perDay[row.date] = row.checks
             }
             recentDays = byDate
+            dayChecks = perDay
             lastLogDate = rows.map(\.date).max()
+            oldestLogDate = rows.map(\.date).min()
         }
         loaded = true // never block the UI on the logbook
     }

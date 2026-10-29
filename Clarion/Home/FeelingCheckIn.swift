@@ -13,16 +13,33 @@ final class FeelingStore: ObservableObject {
     /// 1 (drained) … 5 (great). nil = not answered yet today.
     @Published private(set) var today: Int?
 
+    /// "Trained today?" — true = yes, false = rest day, nil = not answered. Same device-local
+    /// semantics as `today`; the smart-insights engine reads both.
+    @Published private(set) var trained: Bool?
+
     private let key: String
+    private let trainedKey: String
 
     init(userId: String?) {
         self.key = "clarion_feeling_\(userId ?? "demo")_\(LocalDay.todayIso())"
+        self.trainedKey = "clarion_workout_\(userId ?? "demo")_\(LocalDay.todayIso())"
+        switch UserDefaults.standard.string(forKey: trainedKey) {
+        case "yes": self.trained = true
+        case "rest": self.trained = false
+        default: self.trained = nil
+        }
         let stored = UserDefaults.standard.integer(forKey: key) // 0 when absent
         var value: Int? = stored == 0 ? nil : stored
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("UITEST_FEELING") { value = 4 }
         #endif
         self.today = value
+    }
+
+    func setTrained(_ yes: Bool) {
+        trained = yes
+        UserDefaults.standard.set(yes ? "yes" : "rest", forKey: trainedKey)
+        Haptics.commit()
     }
 
     func set(_ level: Int) {

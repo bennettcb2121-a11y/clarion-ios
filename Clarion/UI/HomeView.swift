@@ -38,6 +38,11 @@ struct HomeView: View {
     @State private var didRequestHealth = false
     /// Today's subjective "how are you feeling?" check-in (device-local, per user + day).
     @StateObject private var feeling: FeelingStore
+    /// Smart insights — cooldowns, snoozes, one-a-day (device-local, per user).
+    @StateObject private var insights: InsightStateStore
+    @State private var insightSheet = false
+    @State private var insightWhyOpen = false
+    @State private var justCheckedIn = false
 
     init(persona: Persona, report: ReportStore, log: ProtocolLogStore, vitals: VitalsStore, tab: Binding<Int>) {
         self.persona = persona
@@ -49,6 +54,7 @@ struct HomeView: View {
         // from the first frame.
         let userId = SupabaseAuth.shared.session?.userId
         self._feeling = StateObject(wrappedValue: FeelingStore(userId: userId))
+        self._insights = StateObject(wrappedValue: InsightStateStore(userId: userId))
     }
 
     /// What the Library sheet opens onto: the hub (toolbar icon) or one surface
@@ -354,6 +360,91 @@ struct HomeView: View {
             hasStack: !takeableStack.isEmpty,
             dismissedToday: nudgeDismissedDay == ProtocolLogStore.todayKey()
         ))
+    }
+
+
+    // MARK: - Smart insights (web: smartInsights.ts — same rules, same copy)
+
+    private var insightLabMove: SmartInsights.LabMove? {
+        guard let v = victory, let h = reportData?.history else { return nil }
+        // The panel key is the latest draw date + count — one insight per upload, like the web's panel id.
+        let panelKey = "\(h.lastDrawIso ?? "draw")-\(h.panelCount)"
+        switch v {
+        case .improved(let d):
+            return .init(marker: d.marker, from: d.from, to: d.to, unit: d.unit, improved: true, protocolLabel: d.protocolLabel, panelKey: panelKey)
+        case .regressed(let d):
+            return .init(marker: d.marker, from: d.from, to: d.to, unit: d.unit, improved: false, protocolLabel: nil, panelKey: panelKey)
+        case .anticipation:
+            return nil
+        }
+    }
+
+    private var insightDecision: SmartInsights.Decision? {
+        guard reportData != nil, log.loaded, !isUITest || ProcessInfo.processInfo.arguments.contains("UITEST_INSIGHT") else { return nil }
+        let today = ProtocolLogStore.todayKey()
+        var doseLog = log.dayChecks.map { SmartInsights.DoseLogDay(date: $0.key, checks: $0.value) }
+        doseLog.removeAll { $0.date == today }
+        doseLog.append(.init(date: today, checks: log.checks))
+        let nextDraw: SmartInsights.NextDraw? = {
+            switch countdown {
+            case .scheduled(_, _, let daysLeft, _, _): return .scheduled(daysLeft: daysLeft)
+            case .overdue(_, _, let daysOver): return .overdue(daysOver: daysOver)
+            case .none: return SmartInsights.NextDraw.none
+            }
+        }()
+        let wearable: [SmartInsights.WearableDay]? = briefWindow.map { win in
+            win.daily.map { .init(date: $0.date, readiness: $0.readinessScore, hrv: $0.hrv) }
+        }
+        return SmartInsights.pick(.init(
+            dateKey: today,
+            stack: takeableStack.map { .init(logKey: $0.protocolKey, name: $0.coherentName, presetId: SupplementPresets.resolve($0.name)) },
+            doseLog: doseLog,
+            checkIns: InsightStateStore.checkIns(userId: auth.session?.userId, todayKey: today),
+            wearable: wearable,
+            runningLow: runningLowItems.map { ($0.name, $0.daysLeft) },
+            nextDraw: nextDraw,
+            labMove: insightLabMove,
+            firstActivityDay: insights.firstActivityDay(oldestLogDay: log.oldestLogDate, todayKey: today),
+            state: insights.state
+        ))
+    }
+
+    private var insight: SmartInsight? { insightDecision?.insight }
+
+    /// Record the day's insight the first time it shows (one a day, cooldown, tuning log).
+    private func recordInsightShown(_ ins: SmartInsight) {
+        guard insights.state.lastShownId != ins.id else { return }
+        insights.update(SmartInsights.markShown(insights.state, ins, dateKey: ProtocolLogStore.todayKey(), labPanelKey: insightLabMove?.panelKey))
+        insights.logEvent(ins.ruleId, "shown")
+        if justCheckedIn { insightSheet = true }
+        justCheckedIn = false
+    }
+
+    private func snoozeInsight(_ ins: SmartInsight) {
+        Haptics.tap()
+        insights.update(SmartInsights.snooze(insights.state, ins.ruleId, dateKey: ProtocolLogStore.todayKey()))
+        insights.logEvent(ins.ruleId, "snoozed")
+        insightSheet = false
+    }
+
+    private func handleInsightAction(_ ins: SmartInsight) {
+        insights.logEvent(ins.ruleId, "tapped")
+        insightSheet = false
+        guard let cta = ins.primaryCta else { return }
+        if let href = cta.href {
+            switch href {
+            case "/dashboard/analysis": tab = 2
+            case "/dashboard/lab-request": openingWeb = true
+            default: break
+            }
+            return
+        }
+        switch cta.action {
+        case .reorder: tab = 4
+        case .remindTonight: showSettings = true
+        case .logRestDay: feeling.setTrained(false)
+        case .checkIn, .keepGoing, .none: break
+        }
     }
 
     // MARK: - Connect (permission primer BEFORE the system sheet)
@@ -747,7 +838,8 @@ struct HomeView: View {
             sheetTop
             sheetSection(!metricsForSheet.isEmpty) { metricRow }
             sheetSection(!takeableStack.isEmpty) { dosesSection }
-            sheetSection(nudge != nil) { nudgeSection }
+            sheetSection(insight != nil) { insightSection }
+            sheetSection(insight == nil && nudge != nil) { nudgeSection }
             sheetSection(reportData != nil) { nextDrawSection }
             sheetSection(!sheetMarkers.isEmpty) { markersSection }
             sheetSection(true) { feelingSection }
@@ -1272,6 +1364,125 @@ struct HomeView: View {
                     feelingPill(opt.level, opt.label)
                 }
             }
+            HStack(spacing: 10) {
+                Text("Trained today?")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.ink)
+                Spacer(minLength: 0)
+                trainedPill("Yes", value: true)
+                trainedPill("Rest day", value: false)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func trainedPill(_ label: String, value: Bool) -> some View {
+        let selected = feeling.trained == value
+        return Button {
+            justCheckedIn = true
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { feeling.setTrained(value) }
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(selected ? Color.forest : Color.ink2)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(selected ? Color.forestWash : Color.surface))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(selected ? Color.forest : Color.line2, lineWidth: selected ? 1.5 : 1))
+        }
+        .buttonStyle(PressableStyle())
+    }
+
+    // MARK: - Smart insight section + sheet (web: hm-insight band / hm-sheet)
+
+    private func insightTint(_ ins: SmartInsight) -> Color {
+        switch ins.tone {
+        case .fix: return .amberWash
+        case .nudge: return .forestWash
+        case .positive: return .forestWash
+        }
+    }
+
+    private func insightInk(_ ins: SmartInsight) -> Color {
+        ins.tone == .fix ? .amber : .forest
+    }
+
+    private func insightBody(_ ins: SmartInsight, inSheet: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(ins.kicker)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(insightInk(ins))
+                Spacer(minLength: 0)
+                Button("Not now") { snoozeInsight(ins) }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.ink3)
+                    .buttonStyle(PressableStyle(haptic: false))
+            }
+            Text(ins.title)
+                .font(inSheet ? .clarionDisplay(22) : .system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(ins.body)
+                .font(.system(size: 14.5))
+                .foregroundStyle(Color.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+            if let viz = ins.dataViz {
+                Text(viz).font(.system(size: 12.5)).foregroundStyle(Color.ink3)
+            }
+            HStack(spacing: 16) {
+                if let cta = ins.primaryCta {
+                    Button {
+                        Haptics.tap()
+                        handleInsightAction(ins)
+                    } label: {
+                        Text(cta.label)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 11)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(insightInk(ins)))
+                    }
+                    .buttonStyle(PressableStyle(haptic: false))
+                }
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { insightWhyOpen.toggle() }
+                } label: {
+                    Text("Why am I seeing this?")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(insightInk(ins))
+                        .underline()
+                }
+                .buttonStyle(PressableStyle(haptic: false))
+            }
+            .padding(.top, 2)
+            if insightWhyOpen {
+                Text(ins.whyText)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(12)
+                    .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var insightSection: some View {
+        if let ins = insight {
+            insightBody(ins, inSheet: false)
+                .padding(16)
+                .background(insightTint(ins), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .onAppear { recordInsightShown(ins) }
+                .onChange(of: ins.id) { _, _ in recordInsightShown(ins) }
+                .sheet(isPresented: $insightSheet) {
+                    insightBody(ins, inSheet: true)
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(insightTint(ins))
+                        .presentationDetents([.medium])
+                        .presentationDragIndicator(.visible)
+                }
         }
     }
 
@@ -1279,6 +1490,7 @@ struct HomeView: View {
         let selected = feeling.today == level
         let tone = feelingTone(level)
         return Button {
+            justCheckedIn = true
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { feeling.set(level) }
         } label: {
             HStack(spacing: 4) {
